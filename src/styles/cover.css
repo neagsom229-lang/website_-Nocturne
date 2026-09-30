@@ -1,0 +1,124 @@
+/* cover.css — artwork plates.
+   Real photographs still go through the theme's --tp-img-* treatment; when no photo
+   exists, the plate is composed from --tp-grad / --tp-acc / --tp-fx instead of a grey box. */
+
+.cover {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: var(--tp-img-ar);
+  border-radius: var(--tp-img-r);
+  border: var(--tp-img-frame);
+  box-shadow: var(--tp-img-sh);
+  filter: var(--tp-img-filter);
+  transform: rotate(var(--tp-img-tilt));
+  background: var(--tp-grad);
+}
+
+.cover > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover--square {
+  aspect-ratio: 1 / 1;
+}
+
+.cover--wide {
+  aspect-ratio: 16 / 9;
+}
+
+.cover--tall {
+  aspect-ratio: 3 / 4;
+}
+
+.cover--banner {
+  aspect-ratio: 21 / 9;
+}
+
+.cover--fill {
+  aspect-ratio: auto;
+  height: 100%;
+}
+
+.cover__overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--tp-grad);
+  opacity: var(--tp-img-overlay-op);
+  mix-blend-mode: var(--tp-img-blend);
+  pointer-events: none;
+}
+
+.cover__grain {
+  position: absolute;
+  inset: -12%;
+  background: var(--tp-fx);
+  background-size: var(--tp-fx-size);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cover__scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 66%;
+  background: linear-gradient(to top, var(--tp-canvas), transparent);
+  pointer-events: none;
+}
+
+.cover__label {
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  bottom: 24px;
+  color: var(--tp-ink);
+  font-family: var(--tp-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cover__sub {
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  bottom: 9px;
+  color: var(--tp-mute);
+  font-family: var(--tp-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* the little J-card sticker on procedurally generated plates */
+.cover__sticker {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--tp-r-btn);
+  background: var(--tp-surf);
+  border: var(--tp-bw) solid var(--tp-line);
+  color: var(--tp-ink);
+  font-family: var(--tp-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cover__band {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 34%;
+  border-top: var(--tp-bw) solid var(--tp-line);
+  background: var(--tp-surf-2);
+  opacity: 0.9;
+  pointer-events: none;
+}

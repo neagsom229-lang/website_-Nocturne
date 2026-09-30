@@ -1,0 +1,6 @@
+[data-theme='bedroom-pop'] {
+  --tp-acc: #e9b667;
+  --tp-acc-2: #f2cf91;
+  --tp-acc-ink: #2a1c24;
+  --tp-grad: linear-gradient(135deg, var(--tp-acc), var(--tp-acc-2));
+}
