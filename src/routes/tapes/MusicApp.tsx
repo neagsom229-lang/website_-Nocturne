@@ -100,7 +100,7 @@ export function MusicHome() {
 
   async function play(mix: Mix, track: Track) {
     try {
-      setNowPlaying(await updateNowPlaying(mix, track, true));
+      setNowPlaying(await updateNowPlaying(mix, track, false));
       navigate('/tapes/now-playing');
     } catch (playError) {
       setError(playError instanceof Error ? playError.message : 'Could not start this mix.');
@@ -134,7 +134,7 @@ export function MusicHome() {
               onClick={() => void play(featured, featured.tracks[0])}
               disabled={!featured.tracks[0]}
             >
-              <Icon name="play" size={16} /> Let it play
+              <Icon name="play" size={16} /> Open the player
             </button>
           </div>
           <span className="music-featured__time t-mono">SIDE A · 03:14</span>
@@ -149,7 +149,7 @@ export function MusicHome() {
               <button
                 type="button"
                 className="music-mix-card__art"
-                aria-label={`Play ${mix.title}`}
+                aria-label={`Open ${mix.title} in the player`}
                 onClick={() => void play(mix, mix.tracks[0])}
                 disabled={!mix.tracks[0]}
               >
@@ -317,11 +317,11 @@ export function MusicDiscover() {
               <button
                 type="button"
                 className="music-deck-card__listen"
-                onClick={() => void updateNowPlaying(currentMix, currentMix.tracks[0], true)
+                onClick={() => void updateNowPlaying(currentMix, currentMix.tracks[0], false)
                   .then(() => navigate('/tapes/now-playing'))
                   .catch((playError: unknown) => setError(playError instanceof Error ? playError.message : 'Could not start this mix.'))}
               >
-                <Icon name="play" size={16} /> Hear a little
+                <Icon name="play" size={16} /> Open player
               </button>
             </div>
           </article>

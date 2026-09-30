@@ -9,6 +9,10 @@ import './styles/base.css';
 import './styles/cover.css';
 import './styles/app.css';
 import './styles/music.css';
+import './styles/podcast.css';
+import './styles/diary.css';
+import './styles/dating.css';
+import './styles/landing.css';
 
 import { App } from './App';
 import { ToastProvider } from './components/Toast';

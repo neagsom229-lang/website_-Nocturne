@@ -1,0 +1,724 @@
+.app:has(.dating-content) {
+  max-width: 780px;
+}
+
+.dating-content {
+  display: grid;
+  gap: 24px;
+  padding-top: 14px;
+}
+
+.dating-intro {
+  display: grid;
+  gap: 9px;
+  padding: 7px 2px 0;
+}
+
+.dating-intro h1 {
+  font-size: clamp(37px, 9vw, 52px);
+}
+
+.dating-intro h1 em {
+  color: var(--tp-acc);
+  font-weight: 400;
+}
+
+.dating-intro .t-body {
+  max-width: 415px;
+  color: var(--tp-mute);
+}
+
+.dating-checkin {
+  display: grid;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r);
+  background: var(--tp-surf);
+  box-shadow: var(--tp-sh-sm);
+}
+
+.dating-checkin__step {
+  color: var(--tp-acc);
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+.dating-checkin > .t-h2 {
+  font-size: 26px;
+}
+
+.dating-prompt {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+}
+
+.dating-prompt legend {
+  margin-bottom: 8px;
+  color: var(--tp-ink);
+  font-family: var(--tp-font-display);
+  font-size: 19px;
+}
+
+.dating-prompt > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.dating-prompt button {
+  min-height: 39px;
+  padding: 0 11px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-btn);
+  color: var(--tp-mute);
+  font-size: 10px;
+}
+
+.dating-prompt button:hover,
+.dating-prompt button.is-active {
+  border-color: color-mix(in srgb, var(--tp-acc) 65%, var(--tp-line));
+  background: color-mix(in srgb, var(--tp-acc) 10%, var(--tp-surf));
+  color: var(--tp-acc);
+}
+
+.dating-checkin__submit {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.dating-checkin__submit:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.dating-deck {
+  display: grid;
+  gap: 13px;
+  width: 100%;
+  max-width: 510px;
+  margin-inline: auto;
+}
+
+.dating-deck__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dating-deck__meta .t-mono {
+  color: var(--tp-acc);
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.dating-profile-card {
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-lg);
+  background: var(--tp-surf);
+  box-shadow: var(--tp-sh);
+}
+
+.dating-profile-card__photo {
+  position: relative;
+  display: block;
+  height: clamp(270px, 75vw, 400px);
+  overflow: hidden;
+  background: var(--tp-surf-2);
+}
+
+.dating-profile-card__photo .cover {
+  width: 100%;
+  height: 100%;
+}
+
+.dating-profile-card__active,
+.dating-profile-card__distance {
+  position: absolute;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--tp-ink) 18%, transparent);
+  border-radius: var(--tp-r-btn);
+  background: color-mix(in srgb, var(--tp-canvas) 76%, transparent);
+  color: var(--tp-ink);
+  font-size: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.dating-profile-card__active {
+  left: 12px;
+}
+
+.dating-profile-card__active .dot {
+  width: 7px;
+  height: 7px;
+}
+
+.dating-profile-card__distance {
+  right: 12px;
+}
+
+.dating-profile-card__body {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+}
+
+.dating-profile-card__body > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.dating-profile-card__body .t-eyebrow {
+  color: var(--tp-acc);
+  font-size: 9px;
+}
+
+.dating-profile-card__body h2 {
+  font-size: clamp(26px, 7vw, 33px);
+}
+
+.dating-profile-card__headline {
+  color: var(--tp-mute);
+  font-size: 12px;
+}
+
+.dating-profile-card__song {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 7px 10px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-btn);
+  color: var(--tp-acc);
+  font-size: 10px;
+}
+
+.dating-profile-card__bio {
+  color: var(--tp-ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dating-profile-card__prompt {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-left: 2px solid var(--tp-acc);
+  border-radius: 0 var(--tp-r-sm) var(--tp-r-sm) 0;
+  background: var(--tp-surf-2);
+  color: var(--tp-ink);
+  font-family: var(--tp-font-display);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.dating-profile-card__prompt > span {
+  color: var(--tp-mute);
+  font-family: var(--tp-font-body);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.dating-interests {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dating-interests span {
+  padding: 6px 9px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-btn);
+  color: var(--tp-mute);
+  font-size: 9px;
+}
+
+.dating-deck__actions {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 10px;
+}
+
+.dating-action {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-btn);
+  background: var(--tp-surf);
+  color: var(--tp-mute);
+  font-size: 12px;
+  font-weight: 600;
+  transition: transform var(--tp-dur) var(--tp-ease);
+}
+
+.dating-action:active {
+  transform: scale(.98);
+}
+
+.dating-action--like {
+  border-color: color-mix(in srgb, var(--tp-acc) 54%, var(--tp-line));
+  background: color-mix(in srgb, var(--tp-acc) 11%, var(--tp-surf));
+  color: var(--tp-acc);
+}
+
+.dating-action:disabled {
+  opacity: .5;
+}
+
+.dating-deck__hint {
+  text-align: center;
+}
+
+.dating-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 35px 15px;
+  border: 1px dashed var(--tp-line);
+  border-radius: var(--tp-r);
+  color: var(--tp-acc);
+  text-align: center;
+}
+
+.dating-empty > span {
+  font-size: 32px;
+}
+
+.dating-empty .t-serif-italic {
+  max-width: 350px;
+  color: var(--tp-ink);
+  font-size: 21px;
+}
+
+.dating-footer-note {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 14px;
+  border-top: 1px solid var(--tp-line);
+  text-align: center;
+}
+
+.dating-footer-note > span {
+  color: var(--tp-acc);
+}
+
+.dating-footer-note .t-serif-italic {
+  max-width: 330px;
+  color: var(--tp-mute);
+  font-size: 18px;
+}
+
+.dating-match-list {
+  display: grid;
+  gap: 9px;
+}
+
+.dating-match-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 10px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-sm);
+  background: var(--tp-surf);
+}
+
+.dating-match-row__art {
+  width: 58px;
+  height: 58px;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  border-radius: 50%;
+}
+
+.dating-match-row__art .cover {
+  height: 100%;
+}
+
+.dating-match-row__body {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.dating-match-row__body strong {
+  font-family: var(--tp-font-display);
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.dating-match-row__body small {
+  overflow: hidden;
+  color: var(--tp-mute);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dating-match-row__body .t-mono {
+  color: var(--tp-acc);
+  font-size: 8px;
+}
+
+.dating-match-row > svg {
+  color: var(--tp-mute);
+}
+
+.dating-match-row__unread {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tp-acc);
+  color: var(--tp-acc-ink);
+  font-family: var(--tp-font-mono);
+  font-size: 10px;
+}
+
+.dating-match-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-sm);
+  background: var(--tp-surf);
+  color: var(--tp-acc);
+}
+
+.dating-match-note .t-small {
+  color: var(--tp-mute);
+}
+
+.dating-chat {
+  display: flex;
+  min-height: 520px;
+  flex-direction: column;
+  margin: -6px -16px -16px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r);
+  background: color-mix(in srgb, var(--tp-surf) 84%, var(--tp-canvas));
+  overflow: hidden;
+}
+
+.dating-chat__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 66px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--tp-line);
+  background: var(--tp-surf);
+}
+
+.dating-chat__avatar {
+  width: 39px;
+  height: 39px;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.dating-chat__avatar .cover {
+  height: 100%;
+}
+
+.dating-chat__person {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+}
+
+.dating-chat__person strong {
+  font-family: var(--tp-font-display);
+  font-size: 19px;
+  font-weight: 400;
+}
+
+.dating-chat__person small {
+  color: var(--tp-mute);
+  font-size: 9px;
+}
+
+.dating-chat__messages {
+  display: flex;
+  min-height: 330px;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 16px 13px 20px;
+}
+
+.dating-chat__intro {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  margin: 6px auto 15px;
+  text-align: center;
+}
+
+.dating-chat__intro-art {
+  width: 88px;
+  height: 88px;
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  border-radius: 50%;
+}
+
+.dating-chat__intro-art .cover {
+  height: 100%;
+}
+
+.dating-chat__intro .t-eyebrow {
+  max-width: 250px;
+  color: var(--tp-mute);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.dating-chat__intro .t-serif-italic {
+  color: var(--tp-acc);
+  font-size: 17px;
+}
+
+.dating-bubble {
+  display: grid;
+  max-width: 82%;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: var(--tp-r);
+}
+
+.dating-bubble p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dating-bubble time {
+  color: currentColor;
+  font-family: var(--tp-font-mono);
+  font-size: 8px;
+  opacity: .68;
+}
+
+.dating-bubble--them {
+  align-self: flex-start;
+  border: 1px solid var(--tp-line);
+  border-bottom-left-radius: 5px;
+  background: var(--tp-surf-2);
+  color: var(--tp-ink);
+}
+
+.dating-bubble--me {
+  align-self: flex-end;
+  border-bottom-right-radius: 5px;
+  background: var(--tp-acc);
+  color: var(--tp-acc-ink);
+}
+
+.dating-chat__composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--tp-line);
+  background: var(--tp-surf);
+}
+
+.dating-chat__composer input {
+  min-width: 0;
+  min-height: 43px;
+  flex: 1;
+  padding: 0 13px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-btn);
+  background: var(--tp-canvas);
+  font-size: 12px;
+}
+
+.dating-chat__composer button {
+  display: grid;
+  width: 43px;
+  height: 43px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tp-acc);
+  color: var(--tp-acc-ink);
+}
+
+.dating-chat__composer button:disabled {
+  opacity: .45;
+}
+
+.dating-edit-profile {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r);
+  background: var(--tp-surf);
+}
+
+.dating-edit-profile__art {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 4px;
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  border-radius: 50%;
+}
+
+.dating-edit-profile__art .cover {
+  height: 100%;
+}
+
+.dating-person-page {
+  display: grid;
+  gap: 13px;
+}
+
+.dating-person-page > .music-player__back {
+  justify-self: start;
+}
+
+.dating-person-page__art {
+  width: min(100%, 390px);
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r);
+  box-shadow: var(--tp-sh);
+}
+
+.dating-person-page > .t-eyebrow {
+  color: var(--tp-acc);
+}
+
+.dating-person-page__headline {
+  color: var(--tp-mute);
+}
+
+.dating-person-page blockquote {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border-left: 2px solid var(--tp-acc);
+  background: var(--tp-surf);
+}
+
+.dating-person-page blockquote > .t-eyebrow {
+  color: var(--tp-mute);
+  font-size: 9px;
+}
+
+.dating-person-page blockquote .t-serif-italic {
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.dating-match-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--tp-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.dating-match-dialog {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 390px);
+  padding: 25px 20px 20px;
+  border: 1px solid var(--tp-line);
+  border-radius: var(--tp-r-lg);
+  background: var(--tp-surf);
+  box-shadow: var(--tp-sh);
+  text-align: center;
+}
+
+.dating-match-dialog__spark {
+  position: absolute;
+  top: -22px;
+  color: var(--tp-acc);
+  font-size: 37px;
+}
+
+.dating-match-dialog__art {
+  width: 100px;
+  height: 100px;
+  overflow: hidden;
+  border: 3px solid var(--tp-acc);
+  border-radius: 50%;
+  box-shadow: var(--tp-sh);
+}
+
+.dating-match-dialog__art .cover {
+  height: 100%;
+}
+
+.dating-match-dialog > .t-eyebrow {
+  color: var(--tp-acc);
+  font-size: 8px;
+}
+
+.dating-match-dialog h2 {
+  font-size: 30px;
+}
+
+.dating-match-dialog__actions {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@media (min-width: 620px) {
+  .dating-content {
+    gap: 30px;
+    padding-top: 20px;
+  }
+
+  .dating-checkin,
+  .dating-edit-profile {
+    padding: 20px;
+  }
+
+  .dating-chat {
+    min-height: 590px;
+    margin-inline: -4px;
+  }
+
+  .dating-chat__messages {
+    padding-inline: 22px;
+  }
+}
