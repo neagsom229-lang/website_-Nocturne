@@ -24,6 +24,7 @@ const MUSIC_TABS = [
 ];
 
 const MOOD_CHOICES = ['Need to focus', 'Winding down', 'A little lonely', 'Out for a late drive'];
+const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
 function MusicFrame({ children }: { children: ReactNode }) {
   return (
@@ -352,6 +353,7 @@ export function MusicNowPlaying() {
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
+  const audioRef = useRef<HTMLAudioElement>(null);
   const seekValue = useRef(0);
 
   async function loadPlayer() {
@@ -362,6 +364,17 @@ export function MusicNowPlaying() {
       setNowPlaying(loadedNowPlaying);
       setProgress(loadedNowPlaying.progressSeconds);
       seekValue.current = loadedNowPlaying.progressSeconds;
+      if (loadedNowPlaying.isPlaying) {
+        const loadedMix = loadedMixes.find((mix) => mix.id === loadedNowPlaying.mix.id);
+        if (!loadedMix) throw new Error('Saved playback references a mix that is no longer available.');
+        const pausedState = await updateNowPlaying(
+          loadedMix,
+          loadedNowPlaying.track,
+          false,
+          loadedNowPlaying.progressSeconds,
+        );
+        setNowPlaying(pausedState);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load the player.');
     }
@@ -388,22 +401,74 @@ export function MusicNowPlaying() {
     const queue = mixes.flatMap((mix) => mix.tracks.map((track) => ({ mix, track })));
     const currentIndex = queue.findIndex(({ track }) => track.id === nowPlaying.track.id);
     const next = queue[(currentIndex + direction + queue.length) % queue.length];
-    if (next) await setPlayerState(next.mix, next.track, nowPlaying.isPlaying);
+    if (next) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+      await setPlayerState(next.mix, next.track, false);
+      if (nowPlaying.isPlaying && audio) {
+        try {
+          await audio.play();
+          await setPlayerState(next.mix, next.track, true);
+        } catch (playError) {
+          setError(playError instanceof Error ? playError.message : 'Audio could not be started.');
+        }
+      }
+    }
   }
 
   async function persistSeek() {
     if (nowPlaying && currentMix) {
+      const currentTime = audioRef.current?.currentTime ?? seekValue.current;
+      seekValue.current = Math.floor(currentTime);
+      setProgress(currentTime);
       await setPlayerState(currentMix, nowPlaying.track, nowPlaying.isPlaying, seekValue.current);
     }
   }
 
+  async function togglePlayback() {
+    if (!nowPlaying || !currentMix || !audioRef.current) return;
+    setError('');
+    if (nowPlaying.isPlaying) {
+      audioRef.current.pause();
+      await setPlayerState(currentMix, nowPlaying.track, false, Math.floor(audioRef.current.currentTime));
+      return;
+    }
+    try {
+      await audioRef.current.play();
+      await setPlayerState(currentMix, nowPlaying.track, true, Math.floor(audioRef.current.currentTime));
+    } catch (playError) {
+      setError(playError instanceof Error ? playError.message : 'Audio could not be started.');
+    }
+  }
+
   const currentMix = nowPlaying ? mixes.find((mix) => mix.id === nowPlaying.mix.id) : undefined;
+
+  useEffect(() => {
+    if (nowPlaying && audioRef.current) {
+      audioRef.current.currentTime = nowPlaying.progressSeconds;
+    }
+  }, [nowPlaying?.track.id]);
 
   return (
     <MusicFrame>
       {error ? <MusicError message={error} onRetry={() => void loadPlayer()} /> : null}
       {nowPlaying && currentMix ? (
         <section className="music-player">
+          <audio
+            ref={audioRef}
+            src={DEMO_AUDIO_URL}
+            preload="metadata"
+            onTimeUpdate={(event) => {
+              const currentTime = event.currentTarget.currentTime;
+              setProgress(currentTime);
+              seekValue.current = Math.floor(currentTime);
+            }}
+            onEnded={() => void skipTrack(1)}
+            onError={() => setError('The demo audio could not be loaded. Check your connection and try again.')}
+          />
           <div className="music-player__top">
             <Link to="/tapes" className="music-player__back"><Icon name="chevron-left" size={19} /> Back to room</Link>
             <span className="t-eyebrow">NOW PLAYING · SIDE A</span>
@@ -434,6 +499,7 @@ export function MusicNowPlaying() {
                   const next = Number(event.target.value);
                   seekValue.current = next;
                   setProgress(next);
+                  if (audioRef.current) audioRef.current.currentTime = next;
                 }}
                 onPointerUp={() => void persistSeek()}
                 onKeyUp={() => void persistSeek()}
@@ -450,7 +516,7 @@ export function MusicNowPlaying() {
                   type="button"
                   className="music-player__toggle"
                   aria-label={nowPlaying.isPlaying ? 'Pause' : 'Play'}
-                  onClick={() => void setPlayerState(currentMix, nowPlaying.track, !nowPlaying.isPlaying, progress)}
+                  onClick={() => void togglePlayback()}
                 >
                   <Icon name={nowPlaying.isPlaying ? 'pause' : 'play'} size={23} />
                 </button>
