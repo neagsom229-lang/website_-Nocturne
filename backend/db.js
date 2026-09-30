@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import Database from 'better-sqlite3';
 
+if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_PATH) {
+  throw new Error('DATABASE_PATH must point to persistent storage in production.');
+}
+
 const databasePath = process.env.DATABASE_PATH
   ? resolve(process.env.DATABASE_PATH)
   : fileURLToPath(new URL('./data/bedroom-pop.sqlite', import.meta.url));

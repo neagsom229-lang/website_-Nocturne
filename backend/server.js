@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -10,7 +13,8 @@ import rateLimit from 'express-rate-limit';
 import { db, initializeUserData } from './db.js';
 
 const app = express();
-const port = Number(process.env.API_PORT ?? 3001);
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) {
   throw new Error('JWT_SECRET must be set to a random secret of at least 32 characters.');
@@ -22,12 +26,13 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http:/
   .filter(Boolean);
 app.disable('x-powered-by');
 app.use(helmet());
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin is not allowed by CORS'));
-  },
-  credentials: true,
+app.use(cors((request, callback) => {
+  const origin = request.get('origin');
+  const requestOrigin = `${request.protocol}://${request.get('host')}`;
+  if (!origin || origin === requestOrigin || allowedOrigins.includes(origin)) {
+    return callback(null, { origin: true, credentials: true });
+  }
+  return callback(new Error('Origin is not allowed by CORS'));
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -817,6 +822,30 @@ function getPodcastPlayerState(userId) {
   };
 }
 
+app.use('/api', (_request, response) => {
+  response.status(404).json({ error: 'API route not found' });
+});
+
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = resolve(dirname(fileURLToPath(import.meta.url)), '../dist');
+  if (!existsSync(resolve(frontendPath, 'index.html'))) {
+    throw new Error(`Built frontend not found at ${frontendPath}. Run npm run build before starting production.`);
+  }
+  app.use(express.static(frontendPath, {
+    index: false,
+    maxAge: '1h',
+    setHeaders(response, path) {
+      if (path.endsWith('index.html')) response.setHeader('Cache-Control', 'no-cache');
+      else if (path.includes('/assets/')) response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
+  app.get('/{*path}', (_request, response) => {
+    response.sendFile(resolve(frontendPath, 'index.html'), {
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+  });
+}
+
 app.use((error, _request, response, _next) => {
   if (error instanceof SyntaxError && 'body' in error) {
     return response.status(400).json({ error: 'Request body must be valid JSON' });
@@ -826,5 +855,5 @@ app.use((error, _request, response, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`BEDROOM POP API listening on http://localhost:${port}`);
+  console.log(`BEDROOM POP server listening on http://localhost:${port}`);
 });

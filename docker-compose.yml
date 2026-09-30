@@ -1,0 +1,29 @@
+services:
+  nocturne:
+    build: .
+    image: bedroom-pop:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_PATH: /data/bedroom-pop.sqlite
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env before starting Compose}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+    volumes:
+      - nocturne-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  nocturne-data:

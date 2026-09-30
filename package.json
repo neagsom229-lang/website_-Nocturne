@@ -8,9 +8,11 @@
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "vite",
     "dev:api": "node backend/server.js",
+    "start": "node backend/server.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
