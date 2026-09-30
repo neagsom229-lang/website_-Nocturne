@@ -18,6 +18,7 @@ export function LandingPage() {
         <div className="nav__links">
           {NAV_LINKS.map((link) => <a className="nav__link" href={link.href} key={link.href}>{link.label}</a>)}
           <Link className="btn btn--primary btn--sm" to="/tapes">{HERO.primaryCta}</Link>
+          <Link className="btn btn--ghost btn--sm" to="/auth/register">Make an account</Link>
         </div>
       </nav>
 

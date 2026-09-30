@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import 'dotenv/config';
 import Database from 'better-sqlite3';
 
 const databasePath = process.env.DATABASE_PATH
@@ -18,6 +19,13 @@ db.exec(`
     id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     email TEXT UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -164,6 +172,15 @@ db.exec(`
     text TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+`);
+
+const userColumns = db.prepare('PRAGMA table_info(users)').all().map((column) => column.name);
+if (!userColumns.includes('password_hash')) {
+  db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+}
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive
+  ON users(lower(email)) WHERE email IS NOT NULL;
 `);
 
 const seedMixes = [
@@ -368,3 +385,25 @@ const seed = db.transaction(() => {
 });
 
 seed();
+
+export function initializeUserData(user) {
+  const initialize = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json)
+      VALUES (?, ?, 27, 'Usually awake when the good songs come on',
+        'Here for the quiet company and the playlists we can trade.',
+        'Fairy Lights Left On — Ivy Lorne', '["late walks","one good lamp","sad songs"]')
+    `).run(user.id, user.displayName);
+
+    db.prepare(`
+      INSERT INTO now_playing_states (user_id, mix_id, track_id)
+      VALUES (?, 'three-am', 't1')
+    `).run(user.id);
+    db.prepare(`
+      INSERT INTO podcast_player_states (user_id, episode_id)
+      VALUES (?, 'e1')
+    `).run(user.id);
+    db.prepare('INSERT INTO dating_preferences (user_id) VALUES (?)').run(user.id);
+  });
+  initialize();
+}

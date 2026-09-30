@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
 
 import './styles/tailwind.css';
 import './styles/theme.css';
@@ -13,6 +14,7 @@ import './styles/podcast.css';
 import './styles/diary.css';
 import './styles/dating.css';
 import './styles/landing.css';
+import './styles/auth.css';
 
 import { App } from './App';
 import { ToastProvider } from './components/Toast';
@@ -26,9 +28,11 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <BrowserRouter>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );

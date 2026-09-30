@@ -101,6 +101,9 @@ export function Home() {
           <Link className="btn btn--primary btn--sm" to="/landing">
             See the landing page
           </Link>
+          <Link className="btn btn--ghost btn--sm" to="/auth/login">
+            Log in
+          </Link>
         </div>
       </nav>
 

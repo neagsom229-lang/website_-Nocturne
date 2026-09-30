@@ -1,13 +1,84 @@
+import 'dotenv/config';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { db } from './db.js';
+import bcrypt from 'bcryptjs';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import { db, initializeUserData } from './db.js';
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 3001);
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 32) {
+  throw new Error('JWT_SECRET must be set to a random secret of at least 32 characters.');
+}
 
+const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
 
-const defaultUserId = 'guest';
+const sessionCookie = 'nocturne_session';
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+};
+
+function issueSession(response, user) {
+  const sessionId = randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
+    .run(sessionId, user.id, expiresAt);
+  const token = jwt.sign(
+    { email: user.email, displayName: user.displayName },
+    jwtSecret,
+    { subject: user.id, jwtid: sessionId, expiresIn: '7d', issuer: 'bedroom-pop' },
+  );
+  response.cookie(sessionCookie, token, {
+    ...cookieOptions,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function authenticate(request, response, next) {
+  const token = request.cookies[sessionCookie];
+  if (!token) return response.status(401).json({ error: 'Please log in to continue' });
+  try {
+    const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
+    if (typeof claims !== 'object' || typeof claims.sub !== 'string' || typeof claims.jti !== 'string') {
+      return response.status(401).json({ error: 'Your session is invalid. Please log in again.' });
+    }
+    const session = db.prepare(`
+      SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND expires_at > datetime('now')
+    `).get(claims.jti, claims.sub);
+    if (!session) return response.status(401).json({ error: 'Your session ended. Please log in again.' });
+    const user = db.prepare(`
+      SELECT id, email, display_name AS displayName FROM users WHERE id = ?
+    `).get(claims.sub);
+    if (!user) return response.status(401).json({ error: 'Your account is no longer available' });
+    request.user = user;
+    return next();
+  } catch {
+    response.clearCookie(sessionCookie, cookieOptions);
+    return response.status(401).json({ error: 'Your session expired. Please log in again.' });
+  }
+}
 
 function getMixes() {
   const mixes = db.prepare('SELECT * FROM music_mixes ORDER BY rowid').all();
@@ -39,7 +110,7 @@ function getMixes() {
   }));
 }
 
-function getNowPlaying(userId = defaultUserId) {
+function getNowPlaying(userId) {
   const state = db.prepare(`
     SELECT s.is_playing, s.progress_seconds, m.id AS mix_id, m.title AS mix_title,
       m.note AS mix_note, m.cover AS mix_cover, t.id AS track_id, t.title AS track_title,
@@ -84,7 +155,7 @@ function podcastEpisodeQuery() {
   `;
 }
 
-function getPodcastEpisodes({ userId = defaultUserId, showId = null, savedOnly = false } = {}) {
+function getPodcastEpisodes({ userId, showId = null, savedOnly = false }) {
   return db.prepare(`
     ${podcastEpisodeQuery()}
     WHERE (? IS NULL OR e.show_id = ?)
@@ -96,18 +167,18 @@ function getPodcastEpisodes({ userId = defaultUserId, showId = null, savedOnly =
   }));
 }
 
-function getPodcastEpisode(episodeId, userId = defaultUserId) {
+function getPodcastEpisode(episodeId, userId) {
   return db.prepare(`
     ${podcastEpisodeQuery()}
     WHERE e.id = ?
   `).get(userId, episodeId);
 }
 
-function getJournalEntry(entryId) {
+function getJournalEntry(entryId, userId) {
   return db.prepare(`
     SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
     FROM journal_entries WHERE id = ? AND user_id = ?
-  `).get(entryId, defaultUserId);
+  `).get(entryId, userId);
 }
 
 function mapDatingProfile(profile) {
@@ -126,27 +197,129 @@ function mapDatingProfile(profile) {
   };
 }
 
-function getDatingMessages(profileId) {
+function getDatingMessages(profileId, userId) {
   return db.prepare(`
     SELECT id, sender AS "from", text, created_at AS at
     FROM dating_messages
     WHERE user_id = ? AND profile_id = ?
     ORDER BY rowid
-  `).all(defaultUserId, profileId);
+  `).all(userId, profileId);
 }
 
-function listJournalEntries(mood = null) {
+function listJournalEntries(userId, mood = null) {
   return db.prepare(`
     SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
     FROM journal_entries
     WHERE user_id = ? AND (? IS NULL OR mood = ?)
     ORDER BY entry_date DESC, created_at DESC
-  `).all(defaultUserId, mood, mood);
+  `).all(userId, mood, mood);
 }
 
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok', database: db.open ? 'connected' : 'disconnected' });
 });
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts. Take a breath and try again in a little while.' },
+});
+
+app.post('/api/auth/register', authLimiter, async (request, response) => {
+  const { displayName, email, password } = request.body ?? {};
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (
+    typeof displayName !== 'string' ||
+    !displayName.trim() ||
+    displayName.trim().length > 80 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+    normalizedEmail.length > 254 ||
+    typeof password !== 'string' ||
+    password.length < 8 ||
+    password.length > 128
+  ) {
+    return response.status(400).json({
+      error: 'Provide a name, valid email, and password between 8 and 128 characters',
+    });
+  }
+
+  try {
+    const user = {
+      id: randomUUID(),
+      displayName: displayName.trim(),
+      email: normalizedEmail,
+    };
+    const passwordHash = await bcrypt.hash(password, 12);
+    const createAccount = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO users (id, display_name, email, password_hash)
+        VALUES (?, ?, ?, ?)
+      `).run(user.id, user.displayName, user.email, passwordHash);
+      initializeUserData(user);
+    });
+    createAccount();
+    issueSession(response, user);
+    return response.status(201).json({ user });
+  } catch (error) {
+    if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return response.status(409).json({ error: 'An account with that email already exists' });
+    }
+    console.error('Account registration failed:', error);
+    return response.status(500).json({ error: 'Could not create your account right now' });
+  }
+});
+
+app.post('/api/auth/login', authLimiter, async (request, response) => {
+  const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+  const password = typeof request.body?.password === 'string' ? request.body.password : '';
+  if (!email || !password || email.length > 254 || password.length > 128) {
+    return response.status(400).json({ error: 'Enter your email and password' });
+  }
+
+  try {
+    const account = db.prepare(`
+      SELECT id, email, display_name AS displayName, password_hash AS passwordHash
+      FROM users WHERE lower(email) = ?
+    `).get(email);
+    const validPassword = account?.passwordHash
+      ? await bcrypt.compare(password, account.passwordHash)
+      : false;
+    if (!account || !validPassword) {
+      return response.status(401).json({ error: 'That email and password do not match' });
+    }
+    const user = { id: account.id, email: account.email, displayName: account.displayName };
+    issueSession(response, user);
+    return response.json({ user });
+  } catch (error) {
+    console.error('Account login failed:', error);
+    return response.status(500).json({ error: 'Could not sign you in right now' });
+  }
+});
+
+app.get('/api/auth/me', authenticate, (request, response) => {
+  response.json({ user: request.user });
+});
+
+app.post('/api/auth/logout', (request, response) => {
+  const token = request.cookies[sessionCookie];
+  if (token) {
+    try {
+      const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
+      if (typeof claims === 'object' && typeof claims.jti === 'string') {
+        db.prepare('DELETE FROM auth_sessions WHERE id = ?').run(claims.jti);
+      }
+    } catch {
+      response.clearCookie(sessionCookie, cookieOptions);
+      return response.status(204).end();
+    }
+  }
+  response.clearCookie(sessionCookie, cookieOptions);
+  response.status(204).end();
+});
+
+app.use('/api', authenticate);
 
 app.get('/api/music/mixes', (_request, response) => {
   response.json({ mixes: getMixes() });
@@ -159,8 +332,7 @@ app.get('/api/music/mixes/:mixId', (request, response) => {
 });
 
 app.get('/api/music/now-playing', (request, response) => {
-  const userId = typeof request.query.userId === 'string' ? request.query.userId : defaultUserId;
-  const nowPlaying = getNowPlaying(userId);
+  const nowPlaying = getNowPlaying(request.user.id);
   if (!nowPlaying) return response.status(404).json({ error: 'Now-playing state not found' });
   return response.json({ nowPlaying });
 });
@@ -197,17 +369,16 @@ app.put('/api/music/now-playing', (request, response) => {
       is_playing = excluded.is_playing,
       progress_seconds = excluded.progress_seconds,
       updated_at = excluded.updated_at
-  `).run(defaultUserId, mixId, trackId, Number(isPlaying), progressSeconds);
+  `).run(request.user.id, mixId, trackId, Number(isPlaying), progressSeconds);
 
-  return response.json({ nowPlaying: getNowPlaying() });
+  return response.json({ nowPlaying: getNowPlaying(request.user.id) });
 });
 
 app.get('/api/music/swipes', (request, response) => {
-  const userId = typeof request.query.userId === 'string' ? request.query.userId : defaultUserId;
   const swipes = db.prepare(`
     SELECT mix_id AS mixId, action, created_at AS createdAt
     FROM mix_swipes WHERE user_id = ? ORDER BY created_at, mix_id
-  `).all(userId);
+  `).all(request.user.id);
   return response.json({ swipes });
 });
 
@@ -225,7 +396,7 @@ app.post('/api/music/swipes', (request, response) => {
     VALUES (?, ?, ?)
     ON CONFLICT(user_id, mix_id) DO UPDATE SET
       action = excluded.action, created_at = datetime('now')
-  `).run(defaultUserId, mixId, action);
+  `).run(request.user.id, mixId, action);
 
   return response.status(201).json({ mixId, action });
 });
@@ -252,22 +423,22 @@ app.get('/api/podcasts/shows/:showId', (request, response) => {
     GROUP BY s.id
   `).get(request.params.showId);
   if (!show) return response.status(404).json({ error: 'Podcast show not found' });
-  return response.json({ show, episodes: getPodcastEpisodes({ showId: show.id }) });
+  return response.json({ show, episodes: getPodcastEpisodes({ userId: request.user.id, showId: show.id }) });
 });
 
 app.get('/api/podcasts/episodes', (request, response) => {
   const showId = typeof request.query.showId === 'string' ? request.query.showId : null;
-  return response.json({ episodes: getPodcastEpisodes({ showId }) });
+  return response.json({ episodes: getPodcastEpisodes({ userId: request.user.id, showId }) });
 });
 
 app.get('/api/podcasts/episodes/:episodeId', (request, response) => {
-  const episode = getPodcastEpisode(request.params.episodeId);
+  const episode = getPodcastEpisode(request.params.episodeId, request.user.id);
   if (!episode) return response.status(404).json({ error: 'Podcast episode not found' });
   return response.json({ episode: { ...episode, isSaved: Boolean(episode.isSaved) } });
 });
 
-app.get('/api/podcasts/listen-later', (_request, response) => {
-  return response.json({ episodes: getPodcastEpisodes({ savedOnly: true }) });
+app.get('/api/podcasts/listen-later', (request, response) => {
+  return response.json({ episodes: getPodcastEpisodes({ userId: request.user.id, savedOnly: true }) });
 });
 
 app.post('/api/podcasts/listen-later', (request, response) => {
@@ -281,19 +452,19 @@ app.post('/api/podcasts/listen-later', (request, response) => {
   db.prepare(`
     INSERT OR IGNORE INTO podcast_listen_later (user_id, episode_id)
     VALUES (?, ?)
-  `).run(defaultUserId, episodeId);
+  `).run(request.user.id, episodeId);
   return response.status(201).json({ episodeId, saved: true });
 });
 
 app.delete('/api/podcasts/listen-later/:episodeId', (request, response) => {
   const result = db.prepare(`
     DELETE FROM podcast_listen_later WHERE user_id = ? AND episode_id = ?
-  `).run(defaultUserId, request.params.episodeId);
+  `).run(request.user.id, request.params.episodeId);
   if (!result.changes) return response.status(404).json({ error: 'Saved episode not found' });
   return response.json({ episodeId: request.params.episodeId, saved: false });
 });
 
-app.get('/api/podcasts/now-playing', (_request, response) => {
+app.get('/api/podcasts/now-playing', (request, response) => {
   const state = db.prepare(`
     SELECT p.episode_id AS episodeId, p.is_playing AS isPlaying,
       p.progress_seconds AS progressSeconds, e.duration_seconds AS seconds,
@@ -304,7 +475,7 @@ app.get('/api/podcasts/now-playing', (_request, response) => {
     JOIN podcast_episodes e ON e.id = p.episode_id
     JOIN podcast_shows s ON s.id = e.show_id
     WHERE p.user_id = ?
-  `).get(defaultUserId);
+  `).get(request.user.id);
   if (!state) return response.status(404).json({ error: 'Podcast player state not found' });
   return response.json({
     nowPlaying: {
@@ -354,8 +525,8 @@ app.put('/api/podcasts/now-playing', (request, response) => {
       is_playing = excluded.is_playing,
       progress_seconds = excluded.progress_seconds,
       updated_at = excluded.updated_at
-  `).run(defaultUserId, episodeId, Number(isPlaying), progressSeconds);
-  return response.json({ nowPlaying: getPodcastPlayerState() });
+  `).run(request.user.id, episodeId, Number(isPlaying), progressSeconds);
+  return response.json({ nowPlaying: getPodcastPlayerState(request.user.id) });
 });
 
 app.get('/api/journal/entries', (request, response) => {
@@ -364,11 +535,11 @@ app.get('/api/journal/entries', (request, response) => {
   if (mood && !validMoods.includes(mood)) {
     return response.status(400).json({ error: 'Mood must be tender, restless, quiet, hopeful, or wrecked' });
   }
-  return response.json({ entries: listJournalEntries(mood) });
+  return response.json({ entries: listJournalEntries(request.user.id, mood) });
 });
 
 app.get('/api/journal/entries/:entryId', (request, response) => {
-  const entry = getJournalEntry(request.params.entryId);
+  const entry = getJournalEntry(request.params.entryId, request.user.id);
   if (!entry) return response.status(404).json({ error: 'Journal entry not found' });
   return response.json({ entry });
 });
@@ -415,29 +586,29 @@ app.post('/api/journal/entries', (request, response) => {
       note = excluded.note,
       photo = excluded.photo,
       rating = excluded.rating
-  `).run(entryId, defaultUserId, entryDate, humanDate, mood, song.trim(), artist.trim(), note.trim(), photo, rating);
+  `).run(entryId, request.user.id, entryDate, humanDate, mood, song.trim(), artist.trim(), note.trim(), photo, rating);
 
   const entry = db.prepare(`
     SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
     FROM journal_entries WHERE user_id = ? AND entry_date = ?
-  `).get(defaultUserId, entryDate);
+  `).get(request.user.id, entryDate);
   return response.status(201).json({ entry });
 });
 
-app.get('/api/journal/stats', (_request, response) => {
+app.get('/api/journal/stats', (request, response) => {
   const summary = db.prepare(`
     SELECT COUNT(*) AS entries, COUNT(DISTINCT song || '|' || artist) AS songs,
       COALESCE(ROUND(AVG(rating), 1), 0) AS averageRating
     FROM journal_entries WHERE user_id = ?
-  `).get(defaultUserId);
+  `).get(request.user.id);
   const moodCounts = db.prepare(`
     SELECT mood, COUNT(*) AS count FROM journal_entries
     WHERE user_id = ? GROUP BY mood ORDER BY count DESC, mood
-  `).all(defaultUserId);
+  `).all(request.user.id);
   const dates = db.prepare(`
     SELECT entry_date AS entryDate FROM journal_entries
     WHERE user_id = ? ORDER BY entry_date DESC
-  `).all(defaultUserId).map((row) => row.entryDate);
+  `).all(request.user.id).map((row) => row.entryDate);
   let streakDays = 0;
   if (dates.length) {
     const today = new Date();
@@ -450,11 +621,11 @@ app.get('/api/journal/stats', (_request, response) => {
   return response.json({ ...summary, streakDays, moodCounts });
 });
 
-app.get('/api/dating/profile', (_request, response) => {
+app.get('/api/dating/profile', (request, response) => {
   const profile = db.prepare(`
     SELECT name, age, headline, bio, song, interests_json AS interestsJson
     FROM dating_user_profiles WHERE user_id = ?
-  `).get(defaultUserId);
+  `).get(request.user.id);
   if (!profile) return response.status(404).json({ error: 'Your dating profile was not found' });
   return response.json({ profile: { ...profile, interests: JSON.parse(profile.interestsJson), interestsJson: undefined } });
 });
@@ -480,19 +651,19 @@ app.put('/api/dating/profile', (request, response) => {
       name = excluded.name, age = excluded.age, headline = excluded.headline,
       bio = excluded.bio, song = excluded.song, interests_json = excluded.interests_json,
       updated_at = excluded.updated_at
-  `).run(defaultUserId, name.trim(), age, headline.trim(), bio.trim(), song.trim(), JSON.stringify(interests));
+  `).run(request.user.id, name.trim(), age, headline.trim(), bio.trim(), song.trim(), JSON.stringify(interests));
   const profile = db.prepare(`
     SELECT name, age, headline, bio, song, interests_json AS interestsJson
     FROM dating_user_profiles WHERE user_id = ?
-  `).get(defaultUserId);
+  `).get(request.user.id);
   return response.json({ profile: { ...profile, interests: JSON.parse(profile.interestsJson), interestsJson: undefined } });
 });
 
-app.get('/api/dating/preferences', (_request, response) => {
+app.get('/api/dating/preferences', (request, response) => {
   const preferences = db.prepare(`
     SELECT answers_json AS answersJson, completed_at AS completedAt
     FROM dating_preferences WHERE user_id = ?
-  `).get(defaultUserId);
+  `).get(request.user.id);
   return response.json({
     answers: preferences ? JSON.parse(preferences.answersJson) : {},
     completed: Boolean(preferences?.completedAt),
@@ -514,11 +685,11 @@ app.put('/api/dating/preferences', (request, response) => {
     INSERT INTO dating_preferences (user_id, answers_json, completed_at)
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET answers_json = excluded.answers_json, completed_at = excluded.completed_at
-  `).run(defaultUserId, JSON.stringify(answers));
+  `).run(request.user.id, JSON.stringify(answers));
   return response.json({ answers, completed: true });
 });
 
-app.get('/api/dating/profiles', (_request, response) => {
+app.get('/api/dating/profiles', (request, response) => {
   const profiles = db.prepare(`
     SELECT p.* FROM dating_profiles p
     WHERE NOT EXISTS (
@@ -526,7 +697,7 @@ app.get('/api/dating/profiles', (_request, response) => {
       WHERE sw.user_id = ? AND sw.profile_id = p.id
     )
     ORDER BY p.rowid
-  `).all(defaultUserId).map(mapDatingProfile);
+  `).all(request.user.id).map(mapDatingProfile);
   return response.json({ profiles });
 });
 
@@ -548,20 +719,20 @@ app.post('/api/dating/swipes', (request, response) => {
     INSERT INTO dating_swipes (user_id, profile_id, action)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id, profile_id) DO UPDATE SET action = excluded.action, created_at = datetime('now')
-  `).run(defaultUserId, profileId, action);
+  `).run(request.user.id, profileId, action);
   if (action === 'like') {
-    db.prepare('INSERT OR IGNORE INTO dating_matches (user_id, profile_id) VALUES (?, ?)').run(defaultUserId, profileId);
+    db.prepare('INSERT OR IGNORE INTO dating_matches (user_id, profile_id) VALUES (?, ?)').run(request.user.id, profileId);
   }
   return response.status(201).json({
     profileId,
     action,
     matched: action === 'like' && Boolean(db.prepare(
       'SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?',
-    ).get(defaultUserId, profileId)),
+    ).get(request.user.id, profileId)),
   });
 });
 
-app.get('/api/dating/matches', (_request, response) => {
+app.get('/api/dating/matches', (request, response) => {
   const matches = db.prepare(`
     SELECT p.id, p.name, p.age, p.distance_km AS distanceKm,
       p.headline, p.bio, p.interests_json AS interestsJson, p.song, p.photo,
@@ -572,7 +743,7 @@ app.get('/api/dating/matches', (_request, response) => {
     FROM dating_matches m JOIN dating_profiles p ON p.id = m.profile_id
     WHERE m.user_id = ?
     ORDER BY m.matched_at DESC, p.name
-  `).all(defaultUserId).map((profile) => ({
+  `).all(request.user.id).map((profile) => ({
     ...profile,
     interests: JSON.parse(profile.interestsJson),
     prompt: { question: profile.promptQuestion, answer: profile.promptAnswer },
@@ -582,21 +753,21 @@ app.get('/api/dating/matches', (_request, response) => {
     unread: db.prepare(`
       SELECT COUNT(*) AS count FROM dating_messages
       WHERE user_id = ? AND profile_id = ? AND sender = 'them'
-    `).get(defaultUserId, profile.id).count,
+    `).get(request.user.id, profile.id).count,
   }));
   return response.json({ matches });
 });
 
 app.get('/api/dating/matches/:profileId/messages', (request, response) => {
   const matched = db.prepare('SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?')
-    .get(defaultUserId, request.params.profileId);
+    .get(request.user.id, request.params.profileId);
   if (!matched) return response.status(404).json({ error: 'Match not found' });
-  return response.json({ messages: getDatingMessages(request.params.profileId) });
+  return response.json({ messages: getDatingMessages(request.params.profileId, request.user.id) });
 });
 
 app.post('/api/dating/matches/:profileId/messages', (request, response) => {
   const matched = db.prepare('SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?')
-    .get(defaultUserId, request.params.profileId);
+    .get(request.user.id, request.params.profileId);
   if (!matched) return response.status(404).json({ error: 'Match not found' });
   const { text } = request.body ?? {};
   if (typeof text !== 'string' || !text.trim() || text.trim().length > 1000) {
@@ -606,7 +777,7 @@ app.post('/api/dating/matches/:profileId/messages', (request, response) => {
   db.prepare(`
     INSERT INTO dating_messages (id, user_id, profile_id, sender, text)
     VALUES (?, ?, ?, 'me', ?)
-  `).run(id, defaultUserId, request.params.profileId, text.trim());
+  `).run(id, request.user.id, request.params.profileId, text.trim());
   return response.status(201).json({
     message: db.prepare(`
       SELECT id, sender AS "from", text, created_at AS at FROM dating_messages WHERE id = ?
@@ -614,7 +785,7 @@ app.post('/api/dating/matches/:profileId/messages', (request, response) => {
   });
 });
 
-function getPodcastPlayerState() {
+function getPodcastPlayerState(userId) {
   const state = db.prepare(`
     SELECT p.episode_id AS episodeId, p.is_playing AS isPlaying,
       p.progress_seconds AS progressSeconds, e.duration_seconds AS seconds,
@@ -625,7 +796,7 @@ function getPodcastPlayerState() {
     JOIN podcast_episodes e ON e.id = p.episode_id
     JOIN podcast_shows s ON s.id = e.show_id
     WHERE p.user_id = ?
-  `).get(defaultUserId);
+  `).get(userId);
   return {
     ...state,
     isPlaying: Boolean(state.isPlaying),
