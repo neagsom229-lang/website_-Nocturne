@@ -2,19 +2,15 @@ services:
   - type: web
     name: bedroom-pop
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    disk:
-      name: bedroom-pop-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_PATH
-        value: /var/data/bedroom-pop.sqlite
+      - key: DATABASE_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: TRUST_PROXY

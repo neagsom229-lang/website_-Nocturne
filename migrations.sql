@@ -1,0 +1,192 @@
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  email TEXT UNIQUE,
+  password_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive
+  ON users (LOWER(email)) WHERE email IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS music_mixes (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  note TEXT NOT NULL,
+  cover TEXT NOT NULL,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS music_tracks (
+  id TEXT PRIMARY KEY,
+  mix_id TEXT NOT NULL REFERENCES music_mixes(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
+  cover TEXT NOT NULL,
+  UNIQUE (mix_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS now_playing_states (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  mix_id TEXT NOT NULL REFERENCES music_mixes(id),
+  track_id TEXT NOT NULL REFERENCES music_tracks(id),
+  is_playing BOOLEAN NOT NULL DEFAULT FALSE,
+  progress_seconds INTEGER NOT NULL DEFAULT 0 CHECK (progress_seconds >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mix_swipes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mix_id TEXT NOT NULL REFERENCES music_mixes(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('like', 'pass')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, mix_id)
+);
+
+CREATE TABLE IF NOT EXISTS podcast_shows (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  host TEXT NOT NULL,
+  blurb TEXT NOT NULL,
+  art TEXT NOT NULL,
+  cadence TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS podcast_episodes (
+  id TEXT PRIMARY KEY,
+  show_id TEXT NOT NULL REFERENCES podcast_shows(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
+  published TEXT NOT NULL,
+  season INTEGER NOT NULL,
+  episode_number INTEGER NOT NULL,
+  audio_url TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS podcast_listen_later (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, episode_id)
+);
+
+CREATE TABLE IF NOT EXISTS podcast_player_states (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  episode_id TEXT NOT NULL REFERENCES podcast_episodes(id),
+  is_playing BOOLEAN NOT NULL DEFAULT FALSE,
+  progress_seconds INTEGER NOT NULL DEFAULT 0 CHECK (progress_seconds >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS media_library (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
+  provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes')),
+  external_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  artist TEXT,
+  thumbnail_url TEXT,
+  stream_url TEXT NOT NULL,
+  external_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, provider, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS media_library_user_created
+  ON media_library (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS search_cache (
+  query TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
+  response_json TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (query, type)
+);
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entry_date DATE NOT NULL,
+  human_date TEXT NOT NULL,
+  mood TEXT NOT NULL CHECK (mood IN ('tender', 'restless', 'quiet', 'hopeful', 'wrecked')),
+  song TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  note TEXT NOT NULL,
+  photo TEXT,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, entry_date)
+);
+
+CREATE TABLE IF NOT EXISTS dating_profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  age INTEGER NOT NULL CHECK (age >= 18),
+  distance_km INTEGER NOT NULL CHECK (distance_km >= 0),
+  headline TEXT NOT NULL,
+  bio TEXT NOT NULL,
+  interests_json TEXT NOT NULL DEFAULT '[]',
+  song TEXT NOT NULL,
+  prompt_question TEXT NOT NULL,
+  prompt_answer TEXT NOT NULL,
+  photo TEXT NOT NULL,
+  last_active TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS dating_user_profiles (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  age INTEGER NOT NULL CHECK (age >= 18),
+  headline TEXT NOT NULL,
+  bio TEXT NOT NULL,
+  song TEXT NOT NULL,
+  interests_json TEXT NOT NULL DEFAULT '[]',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS dating_preferences (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  answers_json TEXT NOT NULL DEFAULT '{}',
+  completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS dating_swipes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('like', 'pass')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS dating_matches (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
+  matched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS dating_messages (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL CHECK (sender IN ('me', 'them')),
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);

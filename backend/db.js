@@ -1,217 +1,72 @@
-import { mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
-import Database from 'better-sqlite3';
+import pg from 'pg';
 
-if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_PATH) {
-  throw new Error('DATABASE_PATH must point to persistent storage in production.');
+const { Pool, types } = pg;
+types.setTypeParser(20, Number);
+types.setTypeParser(1700, Number);
+const rawDatabaseUrl = process.env.DATABASE_URL;
+if (!rawDatabaseUrl) throw new Error('DATABASE_URL must be configured for PostgreSQL.');
+
+const databaseUrl = new URL(rawDatabaseUrl);
+const usesSupabasePooler = databaseUrl.hostname.endsWith('.pooler.supabase.com')
+  || databaseUrl.hostname.endsWith('.supabase.co');
+databaseUrl.searchParams.set('pgbouncer', 'true');
+const pool = new Pool({
+  connectionString: databaseUrl.toString(),
+  ssl: usesSupabasePooler ? { rejectUnauthorized: true } : undefined,
+});
+
+function databaseFor(query) {
+  return {
+    prepare(sql) {
+      return {
+        async get(...params) {
+          const result = await query(sql, params);
+          return result.rows[0];
+        },
+        async all(...params) {
+          const result = await query(sql, params);
+          return result.rows;
+        },
+        async run(...params) {
+          const result = await query(sql, params);
+          return { changes: result.rowCount };
+        },
+      };
+    },
+  };
 }
 
-const databasePath = process.env.DATABASE_PATH
-  ? resolve(process.env.DATABASE_PATH)
-  : fileURLToPath(new URL('./data/bedroom-pop.sqlite', import.meta.url));
-
-mkdirSync(dirname(databasePath), { recursive: true });
-
-export const db = new Database(databasePath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    display_name TEXT NOT NULL,
-    email TEXT UNIQUE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS auth_sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS music_mixes (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    note TEXT NOT NULL,
-    cover TEXT NOT NULL,
-    tags_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS music_tracks (
-    id TEXT PRIMARY KEY,
-    mix_id TEXT NOT NULL REFERENCES music_mixes(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    artist TEXT NOT NULL,
-    duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
-    cover TEXT NOT NULL,
-    UNIQUE (mix_id, position)
-  );
-
-  CREATE TABLE IF NOT EXISTS now_playing_states (
-    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    mix_id TEXT NOT NULL REFERENCES music_mixes(id),
-    track_id TEXT NOT NULL REFERENCES music_tracks(id),
-    is_playing INTEGER NOT NULL DEFAULT 0 CHECK (is_playing IN (0, 1)),
-    progress_seconds INTEGER NOT NULL DEFAULT 0 CHECK (progress_seconds >= 0),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS mix_swipes (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    mix_id TEXT NOT NULL REFERENCES music_mixes(id) ON DELETE CASCADE,
-    action TEXT NOT NULL CHECK (action IN ('like', 'pass')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, mix_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS podcast_shows (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    host TEXT NOT NULL,
-    blurb TEXT NOT NULL,
-    art TEXT NOT NULL,
-    cadence TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS podcast_episodes (
-    id TEXT PRIMARY KEY,
-    show_id TEXT NOT NULL REFERENCES podcast_shows(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),
-    published TEXT NOT NULL,
-    season INTEGER NOT NULL,
-    episode_number INTEGER NOT NULL,
-    audio_url TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS podcast_listen_later (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, episode_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS podcast_player_states (
-    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    episode_id TEXT NOT NULL REFERENCES podcast_episodes(id),
-    is_playing INTEGER NOT NULL DEFAULT 0 CHECK (is_playing IN (0, 1)),
-    progress_seconds INTEGER NOT NULL DEFAULT 0 CHECK (progress_seconds >= 0),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS media_library (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
-    provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes')),
-    external_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    artist TEXT,
-    thumbnail_url TEXT,
-    stream_url TEXT NOT NULL,
-    external_url TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (user_id, provider, external_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS media_library_user_created
-    ON media_library(user_id, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS search_cache (
-    query TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
-    response_json TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    PRIMARY KEY (query, type)
-  );
-
-  CREATE TABLE IF NOT EXISTS journal_entries (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    entry_date TEXT NOT NULL,
-    human_date TEXT NOT NULL,
-    mood TEXT NOT NULL CHECK (mood IN ('tender', 'restless', 'quiet', 'hopeful', 'wrecked')),
-    song TEXT NOT NULL,
-    artist TEXT NOT NULL,
-    note TEXT NOT NULL,
-    photo TEXT,
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (user_id, entry_date)
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_profiles (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    age INTEGER NOT NULL CHECK (age >= 18),
-    distance_km INTEGER NOT NULL CHECK (distance_km >= 0),
-    headline TEXT NOT NULL,
-    bio TEXT NOT NULL,
-    interests_json TEXT NOT NULL DEFAULT '[]',
-    song TEXT NOT NULL,
-    prompt_question TEXT NOT NULL,
-    prompt_answer TEXT NOT NULL,
-    photo TEXT NOT NULL,
-    last_active TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_user_profiles (
-    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    age INTEGER NOT NULL CHECK (age >= 18),
-    headline TEXT NOT NULL,
-    bio TEXT NOT NULL,
-    song TEXT NOT NULL,
-    interests_json TEXT NOT NULL DEFAULT '[]',
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_preferences (
-    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    answers_json TEXT NOT NULL DEFAULT '{}',
-    completed_at TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_swipes (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
-    action TEXT NOT NULL CHECK (action IN ('like', 'pass')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, profile_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_matches (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
-    matched_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, profile_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS dating_messages (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    profile_id TEXT NOT NULL REFERENCES dating_profiles(id) ON DELETE CASCADE,
-    sender TEXT NOT NULL CHECK (sender IN ('me', 'them')),
-    text TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-const userColumns = db.prepare('PRAGMA table_info(users)').all().map((column) => column.name);
-if (!userColumns.includes('password_hash')) {
-  db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
-}
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive
-  ON users(lower(email)) WHERE email IS NOT NULL;
-`);
+export const db = {
+  ...databaseFor((sql, params) => pool.query(sql, params)),
+  async transaction(callback) {
+    const client = await pool.connect();
+    const pending = [];
+    const tx = databaseFor((sql, params) => {
+      const result = client.query(sql, params);
+      pending.push(result);
+      return result;
+    });
+    try {
+      await client.query('BEGIN');
+      const value = await callback(tx);
+      await Promise.all(pending);
+      await client.query('COMMIT');
+      return value;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+  query(sql, params) {
+    return pool.query(sql, params);
+  },
+  async close() {
+    await pool.end();
+  },
+};
 
 const seedMixes = [
   {
@@ -332,108 +187,102 @@ const seedDatingMessages = [
   ['m7', 'p2', 'them', 'respect. what is the fourteenth one for', 'Yesterday'],
 ];
 
-const seed = db.transaction(() => {
-  db.prepare('INSERT OR IGNORE INTO users (id, display_name) VALUES (?, ?)').run(
+const seed = () => db.transaction((tx) => {
+  tx.prepare('INSERT INTO users (id, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING').run(
     'guest',
     'Night listener',
   );
 
-  const insertMix = db.prepare(`
-    INSERT OR IGNORE INTO music_mixes (id, title, note, cover, tags_json)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-  const insertTrack = db.prepare(`
-    INSERT OR IGNORE INTO music_tracks
+  const insertMix = tx.prepare(`
+    INSERT INTO music_mixes (id, title, note, cover, tags_json, sort_order)
+    VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`);
+  const insertTrack = tx.prepare(`
+    INSERT INTO music_tracks
       (id, mix_id, position, title, artist, duration_seconds, cover)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
+    VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`);
 
-  for (const mix of seedMixes) {
-    insertMix.run(mix.id, mix.title, mix.note, mix.cover, JSON.stringify(mix.tags));
+  for (const [mixOrder, mix] of seedMixes.entries()) {
+    insertMix.run(mix.id, mix.title, mix.note, mix.cover, JSON.stringify(mix.tags), mixOrder);
     mix.tracks.forEach(([id, title, artist, seconds, cover], index) => {
       insertTrack.run(id, mix.id, index, title, artist, seconds, cover);
     });
   }
 
-  const insertShow = db.prepare(`
-    INSERT OR IGNORE INTO podcast_shows (id, title, host, blurb, art, cadence)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  for (const show of seedShows) insertShow.run(...show);
+  const insertShow = tx.prepare(`
+    INSERT INTO podcast_shows (id, title, host, blurb, art, cadence, sort_order)
+    VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`);
+  for (const [sortOrder, show] of seedShows.entries()) insertShow.run(...show, sortOrder);
 
-  const insertEpisode = db.prepare(`
-    INSERT OR IGNORE INTO podcast_episodes
-      (id, show_id, title, summary, duration_seconds, published, season, episode_number, audio_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const episode of seedEpisodes) {
-    insertEpisode.run(...episode, 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
+  const insertEpisode = tx.prepare(`
+    INSERT INTO podcast_episodes
+      (id, show_id, title, summary, duration_seconds, published, season, episode_number, audio_url, sort_order)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`);
+  for (const [sortOrder, episode] of seedEpisodes.entries()) {
+    insertEpisode.run(...episode, 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', sortOrder);
   }
 
-  const saveEpisode = db.prepare('INSERT OR IGNORE INTO podcast_listen_later (user_id, episode_id) VALUES (?, ?)');
+  const saveEpisode = tx.prepare('INSERT INTO podcast_listen_later (user_id, episode_id) VALUES ($1, $2) ON CONFLICT DO NOTHING');
   saveEpisode.run('guest', 'e3');
   saveEpisode.run('guest', 'e5');
 
-  db.prepare(`
-    INSERT OR IGNORE INTO podcast_player_states (user_id, episode_id)
-    VALUES (?, ?)
-  `).run('guest', 'e1');
+  tx.prepare(`
+    INSERT INTO podcast_player_states (user_id, episode_id)
+    VALUES ($1, $2) ON CONFLICT DO NOTHING`).run('guest', 'e1');
 
-  db.prepare(`
-    INSERT OR IGNORE INTO now_playing_states (user_id, mix_id, track_id)
-    VALUES (?, ?, ?)
-  `).run('guest', 'three-am', 't1');
+  tx.prepare(`
+    INSERT INTO now_playing_states (user_id, mix_id, track_id)
+    VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`).run('guest', 'three-am', 't1');
 
-  const insertJournalEntry = db.prepare(`
-    INSERT OR IGNORE INTO journal_entries
+  const insertJournalEntry = tx.prepare(`
+    INSERT INTO journal_entries
       (id, user_id, entry_date, human_date, mood, song, artist, note, photo, rating)
-    VALUES (?, 'guest', ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+    VALUES ($1, 'guest', $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`);
   for (const entry of seedJournalEntries) insertJournalEntry.run(...entry);
 
-  const insertDatingProfile = db.prepare(`
-    INSERT OR IGNORE INTO dating_profiles
-      (id, name, age, distance_km, headline, bio, interests_json, song, prompt_question, prompt_answer, photo, last_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const profile of seedDatingProfiles) {
+  const insertDatingProfile = tx.prepare(`
+    INSERT INTO dating_profiles
+      (id, name, age, distance_km, headline, bio, interests_json, song, prompt_question, prompt_answer, photo, last_active, sort_order)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING`);
+  for (const [sortOrder, profile] of seedDatingProfiles.entries()) {
     const [id, name, age, distance, headline, bio, interests, song, question, answer, photo, lastActive] = profile;
-    insertDatingProfile.run(id, name, age, distance, headline, bio, JSON.stringify(interests), song, question, answer, photo, lastActive);
+    insertDatingProfile.run(id, name, age, distance, headline, bio, JSON.stringify(interests), song, question, answer, photo, lastActive, sortOrder);
   }
-  db.prepare(`
-    INSERT OR IGNORE INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json)
-    VALUES ('guest', 'You', 27, 'Usually awake when the good songs come on', 'Here for the quiet company and the playlists we can trade.', 'Fairy Lights Left On — Ivy Lorne', '["late walks","one good lamp","sad songs"]')
-  `).run();
-  db.prepare('INSERT OR IGNORE INTO dating_preferences (user_id) VALUES (?)').run('guest');
-  db.prepare('INSERT OR IGNORE INTO dating_matches (user_id, profile_id) VALUES (?, ?)').run('guest', 'p1');
-  db.prepare('INSERT OR IGNORE INTO dating_matches (user_id, profile_id) VALUES (?, ?)').run('guest', 'p2');
-  const insertDatingMessage = db.prepare(`
-    INSERT OR IGNORE INTO dating_messages (id, user_id, profile_id, sender, text, created_at)
-    VALUES (?, 'guest', ?, ?, ?, ?)
-  `);
-  for (const message of seedDatingMessages) insertDatingMessage.run(...message);
+  tx.prepare(`
+    INSERT INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json)
+    VALUES ('guest', 'You', 27, 'Usually awake when the good songs come on', 'Here for the quiet company and the playlists we can trade.', 'Fairy Lights Left On — Ivy Lorne', '["late walks","one good lamp","sad songs"]') ON CONFLICT DO NOTHING`).run();
+  tx.prepare('INSERT INTO dating_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING').run('guest');
+  tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p1');
+  tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p2');
+  const insertDatingMessage = tx.prepare(`
+    INSERT INTO dating_messages (id, user_id, profile_id, sender, text, sort_order)
+    VALUES ($1, 'guest', $2, $3, $4, $5) ON CONFLICT DO NOTHING`);
+  for (const [sortOrder, [id, profileId, sender, text]] of seedDatingMessages.entries()) {
+    insertDatingMessage.run(id, profileId, sender, text, sortOrder);
+  }
 });
 
-seed();
+export async function initializeDatabase() {
+  await seed();
+}
 
-export function initializeUserData(user) {
-  const initialize = db.transaction(() => {
-    db.prepare(`
+export function initializeUserData(user, tx) {
+  const initialize = async (connection) => {
+    await connection.prepare(`
       INSERT INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json)
-      VALUES (?, ?, 27, 'Usually awake when the good songs come on',
+      VALUES ($1, $2, 27, 'Usually awake when the good songs come on',
         'Here for the quiet company and the playlists we can trade.',
         'Fairy Lights Left On — Ivy Lorne', '["late walks","one good lamp","sad songs"]')
     `).run(user.id, user.displayName);
 
-    db.prepare(`
+    await connection.prepare(`
       INSERT INTO now_playing_states (user_id, mix_id, track_id)
-      VALUES (?, 'three-am', 't1')
+      VALUES ($1, 'three-am', 't1')
     `).run(user.id);
-    db.prepare(`
+    await connection.prepare(`
       INSERT INTO podcast_player_states (user_id, episode_id)
-      VALUES (?, 'e1')
+      VALUES ($1, 'e1')
     `).run(user.id);
-    db.prepare('INSERT INTO dating_preferences (user_id) VALUES (?)').run(user.id);
-  });
-  initialize();
+    await connection.prepare('INSERT INTO dating_preferences (user_id) VALUES ($1)').run(user.id);
+  };
+  return tx ? initialize(tx) : db.transaction(initialize);
 }

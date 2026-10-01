@@ -10,7 +10,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
-import { db, initializeUserData } from './db.js';
+import { db, initializeDatabase, initializeUserData } from './db.js';
 import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
 
 const app = express();
@@ -46,10 +46,10 @@ const cookieOptions = {
   path: '/',
 };
 
-function issueSession(response, user) {
+async function issueSession(response, user) {
   const sessionId = randomUUID();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
+  await db.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)')
     .run(sessionId, user.id, expiresAt);
   const token = jwt.sign(
     { email: user.email, displayName: user.displayName },
@@ -62,33 +62,34 @@ function issueSession(response, user) {
   });
 }
 
-function authenticate(request, response, next) {
+async function authenticate(request, response, next) {
   const token = request.cookies[sessionCookie];
   if (!token) return response.status(401).json({ error: 'Please log in to continue' });
+  let claims;
   try {
-    const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
-    if (typeof claims !== 'object' || typeof claims.sub !== 'string' || typeof claims.jti !== 'string') {
-      return response.status(401).json({ error: 'Your session is invalid. Please log in again.' });
-    }
-    const session = db.prepare(`
-      SELECT 1 FROM auth_sessions WHERE id = ? AND user_id = ? AND expires_at > datetime('now')
-    `).get(claims.jti, claims.sub);
-    if (!session) return response.status(401).json({ error: 'Your session ended. Please log in again.' });
-    const user = db.prepare(`
-      SELECT id, email, display_name AS displayName FROM users WHERE id = ?
-    `).get(claims.sub);
-    if (!user) return response.status(401).json({ error: 'Your account is no longer available' });
-    request.user = user;
-    return next();
+    claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
   } catch {
     response.clearCookie(sessionCookie, cookieOptions);
     return response.status(401).json({ error: 'Your session expired. Please log in again.' });
   }
+  if (typeof claims !== 'object' || typeof claims.sub !== 'string' || typeof claims.jti !== 'string') {
+    return response.status(401).json({ error: 'Your session is invalid. Please log in again.' });
+  }
+  const session = await db.prepare(`
+    SELECT 1 FROM auth_sessions WHERE id = $1 AND user_id = $2 AND expires_at > NOW()
+  `).get(claims.jti, claims.sub);
+  if (!session) return response.status(401).json({ error: 'Your session ended. Please log in again.' });
+  const user = await db.prepare(`
+    SELECT id, email, display_name AS "displayName" FROM users WHERE id = $1
+  `).get(claims.sub);
+  if (!user) return response.status(401).json({ error: 'Your account is no longer available' });
+  request.user = user;
+  return next();
 }
 
-function getMixes() {
-  const mixes = db.prepare('SELECT * FROM music_mixes ORDER BY rowid').all();
-  const tracks = db.prepare(`
+async function getMixes() {
+  const mixes = await db.prepare('SELECT * FROM music_mixes ORDER BY sort_order').all();
+  const tracks = await db.prepare(`
     SELECT id, mix_id, title, artist, duration_seconds AS seconds, cover
     FROM music_tracks
     ORDER BY mix_id, position
@@ -116,15 +117,15 @@ function getMixes() {
   }));
 }
 
-function getNowPlaying(userId) {
-  const state = db.prepare(`
+async function getNowPlaying(userId) {
+  const state = await db.prepare(`
     SELECT s.is_playing, s.progress_seconds, m.id AS mix_id, m.title AS mix_title,
       m.note AS mix_note, m.cover AS mix_cover, t.id AS track_id, t.title AS track_title,
       t.artist, t.duration_seconds AS seconds, t.cover AS track_cover
     FROM now_playing_states s
     JOIN music_mixes m ON m.id = s.mix_id
     JOIN music_tracks t ON t.id = s.track_id AND t.mix_id = s.mix_id
-    WHERE s.user_id = ?
+    WHERE s.user_id = $1
   `).get(userId);
 
   if (!state) return null;
@@ -149,41 +150,41 @@ function getNowPlaying(userId) {
 
 function podcastEpisodeQuery() {
   return `
-    SELECT e.id, e.show_id AS showId, e.title, e.summary,
+    SELECT e.id, e.show_id AS "showId", e.title, e.summary,
       e.duration_seconds AS seconds, e.published, e.season,
-      e.episode_number AS number, e.audio_url AS audioUrl,
-      s.title AS showTitle, s.host AS showHost, s.art AS showArt,
-      CASE WHEN saved.episode_id IS NULL THEN 0 ELSE 1 END AS isSaved
+      e.episode_number AS number, e.audio_url AS "audioUrl",
+      s.title AS "showTitle", s.host AS "showHost", s.art AS "showArt",
+      CASE WHEN saved.episode_id IS NULL THEN 0 ELSE 1 END AS "isSaved"
     FROM podcast_episodes e
     JOIN podcast_shows s ON s.id = e.show_id
     LEFT JOIN podcast_listen_later saved
-      ON saved.episode_id = e.id AND saved.user_id = ?
+      ON saved.episode_id = e.id AND saved.user_id = $1
   `;
 }
 
-function getPodcastEpisodes({ userId, showId = null, savedOnly = false }) {
-  return db.prepare(`
+async function getPodcastEpisodes({ userId, showId = null, savedOnly = false }) {
+  return (await db.prepare(`
     ${podcastEpisodeQuery()}
-    WHERE (? IS NULL OR e.show_id = ?)
-      AND (? = 0 OR saved.episode_id IS NOT NULL)
-    ORDER BY e.rowid ASC
-  `).all(userId, showId, showId, Number(savedOnly)).map((episode) => ({
+    WHERE ($2::text IS NULL OR e.show_id = $2)
+      AND (NOT $3::boolean OR saved.episode_id IS NOT NULL)
+    ORDER BY e.sort_order ASC
+  `).all(userId, showId, savedOnly)).map((episode) => ({
     ...episode,
     isSaved: Boolean(episode.isSaved),
   }));
 }
 
-function getPodcastEpisode(episodeId, userId) {
+async function getPodcastEpisode(episodeId, userId) {
   return db.prepare(`
     ${podcastEpisodeQuery()}
-    WHERE e.id = ?
+    WHERE e.id = $2
   `).get(userId, episodeId);
 }
 
-function getJournalEntry(entryId, userId) {
+async function getJournalEntry(entryId, userId) {
   return db.prepare(`
-    SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
-    FROM journal_entries WHERE id = ? AND user_id = ?
+    SELECT id, entry_date AS "entryDate", human_date AS date, mood, song, artist, note, photo, rating
+    FROM journal_entries WHERE id = $1 AND user_id = $2
   `).get(entryId, userId);
 }
 
@@ -203,26 +204,27 @@ function mapDatingProfile(profile) {
   };
 }
 
-function getDatingMessages(profileId, userId) {
+async function getDatingMessages(profileId, userId) {
   return db.prepare(`
     SELECT id, sender AS "from", text, created_at AS at
     FROM dating_messages
-    WHERE user_id = ? AND profile_id = ?
-    ORDER BY rowid
+    WHERE user_id = $1 AND profile_id = $2
+    ORDER BY sort_order
   `).all(userId, profileId);
 }
 
-function listJournalEntries(userId, mood = null) {
+async function listJournalEntries(userId, mood = null) {
   return db.prepare(`
-    SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
+    SELECT id, entry_date AS "entryDate", human_date AS date, mood, song, artist, note, photo, rating
     FROM journal_entries
-    WHERE user_id = ? AND (? IS NULL OR mood = ?)
+    WHERE user_id = $1 AND ($2::text IS NULL OR mood = $2)
     ORDER BY entry_date DESC, created_at DESC
-  `).all(userId, mood, mood);
+  `).all(userId, mood);
 }
 
-app.get('/api/health', (_request, response) => {
-  response.json({ status: 'ok', database: db.open ? 'connected' : 'disconnected' });
+app.get('/api/health', async (_request, response) => {
+  await db.query('SELECT 1');
+  response.json({ status: 'ok', database: 'connected' });
 });
 
 const authLimiter = rateLimit({
@@ -266,18 +268,17 @@ app.post('/api/auth/register', authLimiter, async (request, response) => {
       email: normalizedEmail,
     };
     const passwordHash = await bcrypt.hash(password, 12);
-    const createAccount = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO users (id, display_name, email, password_hash)
-        VALUES (?, ?, ?, ?)
-      `).run(user.id, user.displayName, user.email, passwordHash);
-      initializeUserData(user);
-    });
-    createAccount();
-    issueSession(response, user);
+    await db.transaction(async (tx) => {
+        await tx.prepare(`
+          INSERT INTO users (id, display_name, email, password_hash)
+          VALUES ($1, $2, $3, $4)
+        `).run(user.id, user.displayName, user.email, passwordHash);
+        await initializeUserData(user, tx);
+      });
+      await issueSession(response, user);
     return response.status(201).json({ user });
   } catch (error) {
-    if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (error?.code === '23505') {
       return response.status(409).json({ error: 'An account with that email already exists' });
     }
     console.error('Account registration failed:', error);
@@ -293,9 +294,9 @@ app.post('/api/auth/login', authLimiter, async (request, response) => {
   }
 
   try {
-    const account = db.prepare(`
-      SELECT id, email, display_name AS displayName, password_hash AS passwordHash
-      FROM users WHERE lower(email) = ?
+    const account = await db.prepare(`
+      SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash"
+      FROM users WHERE lower(email) = $1
     `).get(email);
     const validPassword = account?.passwordHash
       ? await bcrypt.compare(password, account.passwordHash)
@@ -304,7 +305,7 @@ app.post('/api/auth/login', authLimiter, async (request, response) => {
       return response.status(401).json({ error: 'That email and password do not match' });
     }
     const user = { id: account.id, email: account.email, displayName: account.displayName };
-    issueSession(response, user);
+    await issueSession(response, user);
     return response.json({ user });
   } catch (error) {
     console.error('Account login failed:', error);
@@ -312,17 +313,17 @@ app.post('/api/auth/login', authLimiter, async (request, response) => {
   }
 });
 
-app.get('/api/auth/me', authenticate, (request, response) => {
+app.get('/api/auth/me', authenticate, async (request, response) => {
   response.json({ user: request.user });
 });
 
-app.post('/api/auth/logout', (request, response) => {
+app.post('/api/auth/logout', async (request, response) => {
   const token = request.cookies[sessionCookie];
   if (token) {
     try {
       const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
       if (typeof claims === 'object' && typeof claims.jti === 'string') {
-        db.prepare('DELETE FROM auth_sessions WHERE id = ?').run(claims.jti);
+        await db.prepare('DELETE FROM auth_sessions WHERE id = $1').run(claims.jti);
       }
     } catch {
       response.clearCookie(sessionCookie, cookieOptions);
@@ -346,35 +347,35 @@ app.get('/api/search', searchLimiter, async (request, response, next) => {
   }
 
   const cacheQuery = query.toLowerCase();
-  const cached = db.prepare(`
-    SELECT response_json AS responseJson FROM search_cache
-    WHERE query = ? AND type = ? AND expires_at > datetime('now')
+  const cached = await db.prepare(`
+    SELECT response_json AS "responseJson" FROM search_cache
+    WHERE query = $1 AND type = $2 AND expires_at > NOW()
   `).get(cacheQuery, type);
   if (cached) {
     try {
       return response.json({ query, type, results: JSON.parse(cached.responseJson), cached: true });
     } catch (error) {
       console.error('Invalid media search cache entry:', error);
-      db.prepare('DELETE FROM search_cache WHERE query = ? AND type = ?').run(cacheQuery, type);
+      await db.prepare('DELETE FROM search_cache WHERE query = $1 AND type = $2').run(cacheQuery, type);
     }
   }
 
   try {
     const results = await searchExternalMedia(query, type);
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO search_cache (query, type, response_json, expires_at)
-      VALUES (?, ?, ?, datetime('now', '+15 minutes'))
+      VALUES ($1, $2, $3, (NOW() + INTERVAL '15 minutes'))
       ON CONFLICT(query, type) DO UPDATE SET
         response_json = excluded.response_json,
         expires_at = excluded.expires_at
     `).run(cacheQuery, type, JSON.stringify(results));
-    db.prepare("DELETE FROM search_cache WHERE expires_at <= datetime('now')").run();
-    db.prepare(`
+    await db.prepare("DELETE FROM search_cache WHERE expires_at <= NOW()").run();
+    await db.prepare(`
       DELETE FROM search_cache
-      WHERE rowid IN (
-        SELECT rowid FROM search_cache
+      WHERE (query, type) IN (
+        SELECT query, type FROM search_cache
         ORDER BY expires_at DESC
-        LIMIT -1 OFFSET 1000
+        OFFSET 1000
       )
     `).run();
     return response.json({ query, type, results, cached: false });
@@ -390,18 +391,18 @@ app.get('/api/search', searchLimiter, async (request, response, next) => {
   }
 });
 
-app.get('/api/library', (request, response) => {
-  const items = db.prepare(`
-    SELECT id, type, provider, external_id AS externalId, title, artist,
-      thumbnail_url AS thumbnailUrl, stream_url AS streamUrl,
-      external_url AS externalUrl, created_at AS createdAt
-    FROM media_library WHERE user_id = ?
-    ORDER BY created_at DESC, rowid DESC
+app.get('/api/library', async (request, response) => {
+  const items = await db.prepare(`
+    SELECT id, type, provider, external_id AS "externalId", title, artist,
+      thumbnail_url AS "thumbnailUrl", stream_url AS "streamUrl",
+      external_url AS "externalUrl", created_at AS "createdAt"
+    FROM media_library WHERE user_id = $1
+    ORDER BY created_at DESC, id DESC
   `).all(request.user.id);
   return response.json({ items });
 });
 
-app.post('/api/library/save', (request, response) => {
+app.post('/api/library/save', async (request, response) => {
   const {
     type, provider, externalId, title, artist = null,
     thumbnailUrl = null, streamUrl, externalUrl = null,
@@ -429,47 +430,46 @@ app.post('/api/library/save', (request, response) => {
   }
 
   const id = randomUUID();
-  const saved = db.prepare(`
-    INSERT OR IGNORE INTO media_library
+  const saved = await db.prepare(`
+    INSERT INTO media_library
       (id, user_id, type, provider, external_id, title, artist, thumbnail_url, stream_url, external_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`).run(
     id, request.user.id, type, provider, externalId.trim(), title.trim(),
     artist?.trim() || null, thumbnailUrl, streamUrl, externalUrl,
   );
-  const item = db.prepare(`
-    SELECT id, type, provider, external_id AS externalId, title, artist,
-      thumbnail_url AS thumbnailUrl, stream_url AS streamUrl,
-      external_url AS externalUrl, created_at AS createdAt
-    FROM media_library WHERE user_id = ? AND provider = ? AND external_id = ?
+  const item = await db.prepare(`
+    SELECT id, type, provider, external_id AS "externalId", title, artist,
+      thumbnail_url AS "thumbnailUrl", stream_url AS "streamUrl",
+      external_url AS "externalUrl", created_at AS "createdAt"
+    FROM media_library WHERE user_id = $1 AND provider = $2 AND external_id = $3
   `).get(request.user.id, provider, externalId.trim());
   return response.status(saved.changes ? 201 : 200).json({ item, alreadySaved: !saved.changes });
 });
 
-app.delete('/api/library/:itemId', (request, response) => {
-  const result = db.prepare('DELETE FROM media_library WHERE id = ? AND user_id = ?')
+app.delete('/api/library/:itemId', async (request, response) => {
+  const result = await db.prepare('DELETE FROM media_library WHERE id = $1 AND user_id = $2')
     .run(request.params.itemId, request.user.id);
   if (!result.changes) return response.status(404).json({ error: 'Library item not found' });
   return response.status(204).end();
 });
 
-app.get('/api/music/mixes', (_request, response) => {
-  response.json({ mixes: getMixes() });
+app.get('/api/music/mixes', async (_request, response) => {
+  response.json({ mixes: await getMixes() });
 });
 
-app.get('/api/music/mixes/:mixId', (request, response) => {
-  const mix = getMixes().find((item) => item.id === request.params.mixId);
+app.get('/api/music/mixes/:mixId', async (request, response) => {
+  const mix = (await getMixes()).find((item) => item.id === request.params.mixId);
   if (!mix) return response.status(404).json({ error: 'Mix not found' });
   return response.json({ mix });
 });
 
-app.get('/api/music/now-playing', (request, response) => {
-  const nowPlaying = getNowPlaying(request.user.id);
+app.get('/api/music/now-playing', async (request, response) => {
+  const nowPlaying = await getNowPlaying(request.user.id);
   if (!nowPlaying) return response.status(404).json({ error: 'Now-playing state not found' });
   return response.json({ nowPlaying });
 });
 
-app.put('/api/music/now-playing', (request, response) => {
+app.put('/api/music/now-playing', async (request, response) => {
   const { trackId, mixId, isPlaying, progressSeconds = 0 } = request.body ?? {};
   if (
     typeof trackId !== 'string' ||
@@ -483,130 +483,129 @@ app.put('/api/music/now-playing', (request, response) => {
     });
   }
 
-  const track = db.prepare(`
-    SELECT duration_seconds FROM music_tracks WHERE id = ? AND mix_id = ?
+  const track = await db.prepare(`
+    SELECT duration_seconds FROM music_tracks WHERE id = $1 AND mix_id = $2
   `).get(trackId, mixId);
   if (!track) return response.status(404).json({ error: 'Track not found in that mix' });
   if (progressSeconds > track.duration_seconds) {
     return response.status(400).json({ error: 'Progress cannot exceed the track duration' });
   }
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO now_playing_states
       (user_id, mix_id, track_id, is_playing, progress_seconds, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    VALUES ($1, $2, $3, $4, $5, NOW())
     ON CONFLICT(user_id) DO UPDATE SET
       mix_id = excluded.mix_id,
       track_id = excluded.track_id,
       is_playing = excluded.is_playing,
       progress_seconds = excluded.progress_seconds,
       updated_at = excluded.updated_at
-  `).run(request.user.id, mixId, trackId, Number(isPlaying), progressSeconds);
+  `).run(request.user.id, mixId, trackId, isPlaying, progressSeconds);
 
-  return response.json({ nowPlaying: getNowPlaying(request.user.id) });
+  return response.json({ nowPlaying: await getNowPlaying(request.user.id) });
 });
 
-app.get('/api/music/swipes', (request, response) => {
-  const swipes = db.prepare(`
-    SELECT mix_id AS mixId, action, created_at AS createdAt
-    FROM mix_swipes WHERE user_id = ? ORDER BY created_at, mix_id
+app.get('/api/music/swipes', async (request, response) => {
+  const swipes = await db.prepare(`
+    SELECT mix_id AS "mixId", action, created_at AS "createdAt"
+    FROM mix_swipes WHERE user_id = $1 ORDER BY created_at, mix_id
   `).all(request.user.id);
   return response.json({ swipes });
 });
 
-app.post('/api/music/swipes', (request, response) => {
+app.post('/api/music/swipes', async (request, response) => {
   const { mixId, action } = request.body ?? {};
   if (typeof mixId !== 'string' || !['like', 'pass'].includes(action)) {
     return response.status(400).json({ error: 'A valid mixId and action ("like" or "pass") are required' });
   }
-  if (!db.prepare('SELECT 1 FROM music_mixes WHERE id = ?').get(mixId)) {
+  if (!await db.prepare('SELECT 1 FROM music_mixes WHERE id = $1').get(mixId)) {
     return response.status(404).json({ error: 'Mix not found' });
   }
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO mix_swipes (user_id, mix_id, action)
-    VALUES (?, ?, ?)
+    VALUES ($1, $2, $3)
     ON CONFLICT(user_id, mix_id) DO UPDATE SET
-      action = excluded.action, created_at = datetime('now')
+      action = excluded.action, created_at = NOW()
   `).run(request.user.id, mixId, action);
 
   return response.status(201).json({ mixId, action });
 });
 
-app.get('/api/podcasts/shows', (_request, response) => {
-  const shows = db.prepare(`
+app.get('/api/podcasts/shows', async (_request, response) => {
+  const shows = await db.prepare(`
     SELECT s.id, s.title, s.host, s.blurb, s.art, s.cadence,
-      COUNT(e.id) AS episodeCount
+      COUNT(e.id) AS "episodeCount"
     FROM podcast_shows s
     LEFT JOIN podcast_episodes e ON e.show_id = s.id
     GROUP BY s.id
-    ORDER BY s.rowid
+    ORDER BY s.sort_order
   `).all();
   return response.json({ shows });
 });
 
-app.get('/api/podcasts/shows/:showId', (request, response) => {
-  const show = db.prepare(`
+app.get('/api/podcasts/shows/:showId', async (request, response) => {
+  const show = await db.prepare(`
     SELECT s.id, s.title, s.host, s.blurb, s.art, s.cadence,
-      COUNT(e.id) AS episodeCount
+      COUNT(e.id) AS "episodeCount"
     FROM podcast_shows s
     LEFT JOIN podcast_episodes e ON e.show_id = s.id
-    WHERE s.id = ?
+    WHERE s.id = $1
     GROUP BY s.id
   `).get(request.params.showId);
   if (!show) return response.status(404).json({ error: 'Podcast show not found' });
-  return response.json({ show, episodes: getPodcastEpisodes({ userId: request.user.id, showId: show.id }) });
+  return response.json({ show, episodes: await getPodcastEpisodes({ userId: request.user.id, showId: show.id }) });
 });
 
-app.get('/api/podcasts/episodes', (request, response) => {
+app.get('/api/podcasts/episodes', async (request, response) => {
   const showId = typeof request.query.showId === 'string' ? request.query.showId : null;
-  return response.json({ episodes: getPodcastEpisodes({ userId: request.user.id, showId }) });
+  return response.json({ episodes: await getPodcastEpisodes({ userId: request.user.id, showId }) });
 });
 
-app.get('/api/podcasts/episodes/:episodeId', (request, response) => {
-  const episode = getPodcastEpisode(request.params.episodeId, request.user.id);
+app.get('/api/podcasts/episodes/:episodeId', async (request, response) => {
+  const episode = await getPodcastEpisode(request.params.episodeId, request.user.id);
   if (!episode) return response.status(404).json({ error: 'Podcast episode not found' });
   return response.json({ episode: { ...episode, isSaved: Boolean(episode.isSaved) } });
 });
 
-app.get('/api/podcasts/listen-later', (request, response) => {
-  return response.json({ episodes: getPodcastEpisodes({ userId: request.user.id, savedOnly: true }) });
+app.get('/api/podcasts/listen-later', async (request, response) => {
+  return response.json({ episodes: await getPodcastEpisodes({ userId: request.user.id, savedOnly: true }) });
 });
 
-app.post('/api/podcasts/listen-later', (request, response) => {
+app.post('/api/podcasts/listen-later', async (request, response) => {
   const { episodeId } = request.body ?? {};
   if (typeof episodeId !== 'string') {
     return response.status(400).json({ error: 'A valid episodeId is required' });
   }
-  if (!db.prepare('SELECT 1 FROM podcast_episodes WHERE id = ?').get(episodeId)) {
+  if (!await db.prepare('SELECT 1 FROM podcast_episodes WHERE id = $1').get(episodeId)) {
     return response.status(404).json({ error: 'Podcast episode not found' });
   }
-  db.prepare(`
-    INSERT OR IGNORE INTO podcast_listen_later (user_id, episode_id)
-    VALUES (?, ?)
-  `).run(request.user.id, episodeId);
+  await db.prepare(`
+    INSERT INTO podcast_listen_later (user_id, episode_id)
+    VALUES ($1, $2) ON CONFLICT DO NOTHING`).run(request.user.id, episodeId);
   return response.status(201).json({ episodeId, saved: true });
 });
 
-app.delete('/api/podcasts/listen-later/:episodeId', (request, response) => {
-  const result = db.prepare(`
-    DELETE FROM podcast_listen_later WHERE user_id = ? AND episode_id = ?
+app.delete('/api/podcasts/listen-later/:episodeId', async (request, response) => {
+  const result = await db.prepare(`
+    DELETE FROM podcast_listen_later WHERE user_id = $1 AND episode_id = $2
   `).run(request.user.id, request.params.episodeId);
   if (!result.changes) return response.status(404).json({ error: 'Saved episode not found' });
   return response.json({ episodeId: request.params.episodeId, saved: false });
 });
 
-app.get('/api/podcasts/now-playing', (request, response) => {
-  const state = db.prepare(`
-    SELECT p.episode_id AS episodeId, p.is_playing AS isPlaying,
-      p.progress_seconds AS progressSeconds, e.duration_seconds AS seconds,
+app.get('/api/podcasts/now-playing', async (request, response) => {
+  const state = await db.prepare(`
+    SELECT p.episode_id AS "episodeId", p.is_playing AS "isPlaying",
+      p.progress_seconds AS "progressSeconds", e.duration_seconds AS seconds,
       e.title, e.summary, e.published, e.season, e.episode_number AS number,
-      e.audio_url AS audioUrl, e.show_id AS showId, s.title AS showTitle,
-      s.host AS showHost, s.art AS showArt
+      e.audio_url AS "audioUrl", e.show_id AS "showId", s.title AS "showTitle",
+      s.host AS "showHost", s.art AS "showArt"
     FROM podcast_player_states p
     JOIN podcast_episodes e ON e.id = p.episode_id
     JOIN podcast_shows s ON s.id = e.show_id
-    WHERE p.user_id = ?
+    WHERE p.user_id = $1
   `).get(request.user.id);
   if (!state) return response.status(404).json({ error: 'Podcast player state not found' });
   return response.json({
@@ -631,7 +630,7 @@ app.get('/api/podcasts/now-playing', (request, response) => {
   });
 });
 
-app.put('/api/podcasts/now-playing', (request, response) => {
+app.put('/api/podcasts/now-playing', async (request, response) => {
   const { episodeId, isPlaying, progressSeconds = 0 } = request.body ?? {};
   if (
     typeof episodeId !== 'string' ||
@@ -641,42 +640,42 @@ app.put('/api/podcasts/now-playing', (request, response) => {
   ) {
     return response.status(400).json({ error: 'A valid episodeId, isPlaying and progressSeconds are required' });
   }
-  const episode = db.prepare(`
-    SELECT duration_seconds FROM podcast_episodes WHERE id = ?
+  const episode = await db.prepare(`
+    SELECT duration_seconds FROM podcast_episodes WHERE id = $1
   `).get(episodeId);
   if (!episode) return response.status(404).json({ error: 'Podcast episode not found' });
   if (progressSeconds > episode.duration_seconds) {
     return response.status(400).json({ error: 'Progress cannot exceed the episode duration' });
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO podcast_player_states
       (user_id, episode_id, is_playing, progress_seconds, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    VALUES ($1, $2, $3, $4, NOW())
     ON CONFLICT(user_id) DO UPDATE SET
       episode_id = excluded.episode_id,
       is_playing = excluded.is_playing,
       progress_seconds = excluded.progress_seconds,
       updated_at = excluded.updated_at
-  `).run(request.user.id, episodeId, Number(isPlaying), progressSeconds);
-  return response.json({ nowPlaying: getPodcastPlayerState(request.user.id) });
+  `).run(request.user.id, episodeId, isPlaying, progressSeconds);
+  return response.json({ nowPlaying: await getPodcastPlayerState(request.user.id) });
 });
 
-app.get('/api/journal/entries', (request, response) => {
+app.get('/api/journal/entries', async (request, response) => {
   const mood = typeof request.query.mood === 'string' ? request.query.mood : null;
   const validMoods = ['tender', 'restless', 'quiet', 'hopeful', 'wrecked'];
   if (mood && !validMoods.includes(mood)) {
     return response.status(400).json({ error: 'Mood must be tender, restless, quiet, hopeful, or wrecked' });
   }
-  return response.json({ entries: listJournalEntries(request.user.id, mood) });
+  return response.json({ entries: await listJournalEntries(request.user.id, mood) });
 });
 
-app.get('/api/journal/entries/:entryId', (request, response) => {
-  const entry = getJournalEntry(request.params.entryId, request.user.id);
+app.get('/api/journal/entries/:entryId', async (request, response) => {
+  const entry = await getJournalEntry(request.params.entryId, request.user.id);
   if (!entry) return response.status(404).json({ error: 'Journal entry not found' });
   return response.json({ entry });
 });
 
-app.post('/api/journal/entries', (request, response) => {
+app.post('/api/journal/entries', async (request, response) => {
   const { entryDate, mood, song, artist, note, photo = null, rating } = request.body ?? {};
   const validMoods = ['tender', 'restless', 'quiet', 'hopeful', 'wrecked'];
   if (
@@ -706,10 +705,10 @@ app.post('/api/journal/entries', (request, response) => {
     day: 'numeric',
   }).format(new Date(`${entryDate}T12:00:00Z`));
   const entryId = `j-${entryDate}`;
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO journal_entries
       (id, user_id, entry_date, human_date, mood, song, artist, note, photo, rating)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT(user_id, entry_date) DO UPDATE SET
       human_date = excluded.human_date,
       mood = excluded.mood,
@@ -720,27 +719,27 @@ app.post('/api/journal/entries', (request, response) => {
       rating = excluded.rating
   `).run(entryId, request.user.id, entryDate, humanDate, mood, song.trim(), artist.trim(), note.trim(), photo, rating);
 
-  const entry = db.prepare(`
-    SELECT id, entry_date AS entryDate, human_date AS date, mood, song, artist, note, photo, rating
-    FROM journal_entries WHERE user_id = ? AND entry_date = ?
+  const entry = await db.prepare(`
+    SELECT id, entry_date AS "entryDate", human_date AS date, mood, song, artist, note, photo, rating
+    FROM journal_entries WHERE user_id = $1 AND entry_date = $2
   `).get(request.user.id, entryDate);
   return response.status(201).json({ entry });
 });
 
-app.get('/api/journal/stats', (request, response) => {
-  const summary = db.prepare(`
+app.get('/api/journal/stats', async (request, response) => {
+  const summary = await db.prepare(`
     SELECT COUNT(*) AS entries, COUNT(DISTINCT song || '|' || artist) AS songs,
-      COALESCE(ROUND(AVG(rating), 1), 0) AS averageRating
-    FROM journal_entries WHERE user_id = ?
+      COALESCE(ROUND(AVG(rating), 1), 0) AS "averageRating"
+    FROM journal_entries WHERE user_id = $1
   `).get(request.user.id);
-  const moodCounts = db.prepare(`
+  const moodCounts = await db.prepare(`
     SELECT mood, COUNT(*) AS count FROM journal_entries
-    WHERE user_id = ? GROUP BY mood ORDER BY count DESC, mood
+    WHERE user_id = $1 GROUP BY mood ORDER BY count DESC, mood
   `).all(request.user.id);
-  const dates = db.prepare(`
-    SELECT entry_date AS entryDate FROM journal_entries
-    WHERE user_id = ? ORDER BY entry_date DESC
-  `).all(request.user.id).map((row) => row.entryDate);
+  const dates = (await db.prepare(`
+    SELECT entry_date AS "entryDate" FROM journal_entries
+    WHERE user_id = $1 ORDER BY entry_date DESC
+  `).all(request.user.id)).map((row) => row.entryDate);
   let streakDays = 0;
   if (dates.length) {
     const today = new Date();
@@ -753,16 +752,16 @@ app.get('/api/journal/stats', (request, response) => {
   return response.json({ ...summary, streakDays, moodCounts });
 });
 
-app.get('/api/dating/profile', (request, response) => {
-  const profile = db.prepare(`
-    SELECT name, age, headline, bio, song, interests_json AS interestsJson
-    FROM dating_user_profiles WHERE user_id = ?
+app.get('/api/dating/profile', async (request, response) => {
+  const profile = await db.prepare(`
+    SELECT name, age, headline, bio, song, interests_json AS "interestsJson"
+    FROM dating_user_profiles WHERE user_id = $1
   `).get(request.user.id);
   if (!profile) return response.status(404).json({ error: 'Your dating profile was not found' });
   return response.json({ profile: { ...profile, interests: JSON.parse(profile.interestsJson), interestsJson: undefined } });
 });
 
-app.put('/api/dating/profile', (request, response) => {
+app.put('/api/dating/profile', async (request, response) => {
   const { name, age, headline, bio, song, interests } = request.body ?? {};
   if (
     typeof name !== 'string' || !name.trim() || name.length > 80 ||
@@ -776,25 +775,25 @@ app.put('/api/dating/profile', (request, response) => {
   ) {
     return response.status(400).json({ error: 'Provide a name, age 18+, headline, bio, song and up to 12 interests' });
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
     ON CONFLICT(user_id) DO UPDATE SET
       name = excluded.name, age = excluded.age, headline = excluded.headline,
       bio = excluded.bio, song = excluded.song, interests_json = excluded.interests_json,
       updated_at = excluded.updated_at
   `).run(request.user.id, name.trim(), age, headline.trim(), bio.trim(), song.trim(), JSON.stringify(interests));
-  const profile = db.prepare(`
-    SELECT name, age, headline, bio, song, interests_json AS interestsJson
-    FROM dating_user_profiles WHERE user_id = ?
+  const profile = await db.prepare(`
+    SELECT name, age, headline, bio, song, interests_json AS "interestsJson"
+    FROM dating_user_profiles WHERE user_id = $1
   `).get(request.user.id);
   return response.json({ profile: { ...profile, interests: JSON.parse(profile.interestsJson), interestsJson: undefined } });
 });
 
-app.get('/api/dating/preferences', (request, response) => {
-  const preferences = db.prepare(`
-    SELECT answers_json AS answersJson, completed_at AS completedAt
-    FROM dating_preferences WHERE user_id = ?
+app.get('/api/dating/preferences', async (request, response) => {
+  const preferences = await db.prepare(`
+    SELECT answers_json AS "answersJson", completed_at AS "completedAt"
+    FROM dating_preferences WHERE user_id = $1
   `).get(request.user.id);
   return response.json({
     answers: preferences ? JSON.parse(preferences.answersJson) : {},
@@ -802,7 +801,7 @@ app.get('/api/dating/preferences', (request, response) => {
   });
 });
 
-app.put('/api/dating/preferences', (request, response) => {
+app.put('/api/dating/preferences', async (request, response) => {
   const { answers } = request.body ?? {};
   const requiredPrompts = ['late', 'sound', 'room'];
   if (
@@ -813,92 +812,93 @@ app.put('/api/dating/preferences', (request, response) => {
   ) {
     return response.status(400).json({ error: 'Answer the late, sound and room prompts before continuing' });
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO dating_preferences (user_id, answers_json, completed_at)
-    VALUES (?, ?, datetime('now'))
+    VALUES ($1, $2, NOW())
     ON CONFLICT(user_id) DO UPDATE SET answers_json = excluded.answers_json, completed_at = excluded.completed_at
   `).run(request.user.id, JSON.stringify(answers));
   return response.json({ answers, completed: true });
 });
 
-app.get('/api/dating/profiles', (request, response) => {
-  const profiles = db.prepare(`
+app.get('/api/dating/profiles', async (request, response) => {
+  const profiles = (await db.prepare(`
     SELECT p.* FROM dating_profiles p
     WHERE NOT EXISTS (
       SELECT 1 FROM dating_swipes sw
-      WHERE sw.user_id = ? AND sw.profile_id = p.id
+      WHERE sw.user_id = $1 AND sw.profile_id = p.id
     )
-    ORDER BY p.rowid
-  `).all(request.user.id).map(mapDatingProfile);
+    ORDER BY p.sort_order
+  `).all(request.user.id)).map(mapDatingProfile);
   return response.json({ profiles });
 });
 
-app.get('/api/dating/profiles/:profileId', (request, response) => {
-  const profile = mapDatingProfile(db.prepare('SELECT * FROM dating_profiles WHERE id = ?').get(request.params.profileId));
+app.get('/api/dating/profiles/:profileId', async (request, response) => {
+  const profile = mapDatingProfile(await db.prepare('SELECT * FROM dating_profiles WHERE id = $1').get(request.params.profileId));
   if (!profile) return response.status(404).json({ error: 'Profile not found' });
   return response.json({ profile });
 });
 
-app.post('/api/dating/swipes', (request, response) => {
+app.post('/api/dating/swipes', async (request, response) => {
   const { profileId, action } = request.body ?? {};
   if (typeof profileId !== 'string' || !['like', 'pass'].includes(action)) {
     return response.status(400).json({ error: 'Provide a profileId and action ("like" or "pass")' });
   }
-  if (!db.prepare('SELECT 1 FROM dating_profiles WHERE id = ?').get(profileId)) {
+  if (!await db.prepare('SELECT 1 FROM dating_profiles WHERE id = $1').get(profileId)) {
     return response.status(404).json({ error: 'Profile not found' });
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO dating_swipes (user_id, profile_id, action)
-    VALUES (?, ?, ?)
-    ON CONFLICT(user_id, profile_id) DO UPDATE SET action = excluded.action, created_at = datetime('now')
+    VALUES ($1, $2, $3)
+    ON CONFLICT(user_id, profile_id) DO UPDATE SET action = excluded.action, created_at = NOW()
   `).run(request.user.id, profileId, action);
   if (action === 'like') {
-    db.prepare('INSERT OR IGNORE INTO dating_matches (user_id, profile_id) VALUES (?, ?)').run(request.user.id, profileId);
+    await db.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run(request.user.id, profileId);
   }
   return response.status(201).json({
     profileId,
     action,
-    matched: action === 'like' && Boolean(db.prepare(
-      'SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?',
+    matched: action === 'like' && Boolean(await db.prepare(
+      'SELECT 1 FROM dating_matches WHERE user_id = $1 AND profile_id = $2',
     ).get(request.user.id, profileId)),
   });
 });
 
-app.get('/api/dating/matches', (request, response) => {
-  const matches = db.prepare(`
-    SELECT p.id, p.name, p.age, p.distance_km AS distanceKm,
-      p.headline, p.bio, p.interests_json AS interestsJson, p.song, p.photo,
-      p.prompt_question AS promptQuestion, p.prompt_answer AS promptAnswer,
-      p.last_active AS lastActive, m.matched_at AS matchedAt,
+app.get('/api/dating/matches', async (request, response) => {
+  const matchRows = await db.prepare(`
+    SELECT p.id, p.name, p.age, p.distance_km AS "distanceKm",
+      p.headline, p.bio, p.interests_json AS "interestsJson", p.song, p.photo,
+      p.prompt_question AS "promptQuestion", p.prompt_answer AS "promptAnswer",
+      p.last_active AS "lastActive", m.matched_at AS "matchedAt",
       (SELECT text FROM dating_messages msg WHERE msg.user_id = m.user_id
-        AND msg.profile_id = p.id ORDER BY msg.rowid DESC LIMIT 1) AS lastMessage
+        AND msg.profile_id = p.id ORDER BY msg.sort_order DESC LIMIT 1) AS "lastMessage"
     FROM dating_matches m JOIN dating_profiles p ON p.id = m.profile_id
-    WHERE m.user_id = ?
+    WHERE m.user_id = $1
     ORDER BY m.matched_at DESC, p.name
-  `).all(request.user.id).map((profile) => ({
+  `).all(request.user.id);
+  const matches = await Promise.all(matchRows.map(async (profile) => ({
     ...profile,
     interests: JSON.parse(profile.interestsJson),
     prompt: { question: profile.promptQuestion, answer: profile.promptAnswer },
     interestsJson: undefined,
     promptQuestion: undefined,
     promptAnswer: undefined,
-    unread: db.prepare(`
+    unread: (await db.prepare(`
       SELECT COUNT(*) AS count FROM dating_messages
-      WHERE user_id = ? AND profile_id = ? AND sender = 'them'
-    `).get(request.user.id, profile.id).count,
-  }));
+      WHERE user_id = $1 AND profile_id = $2 AND sender = 'them'
+    `).get(request.user.id, profile.id)).count,
+  })));
   return response.json({ matches });
 });
 
-app.get('/api/dating/matches/:profileId/messages', (request, response) => {
-  const matched = db.prepare('SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?')
+app.get('/api/dating/matches/:profileId/messages', async (request, response) => {
+  const matched = await db.prepare('SELECT 1 FROM dating_matches WHERE user_id = $1 AND profile_id = $2')
     .get(request.user.id, request.params.profileId);
   if (!matched) return response.status(404).json({ error: 'Match not found' });
-  return response.json({ messages: getDatingMessages(request.params.profileId, request.user.id) });
+  return response.json({ messages: await getDatingMessages(request.params.profileId, request.user.id) });
 });
 
-app.post('/api/dating/matches/:profileId/messages', (request, response) => {
-  const matched = db.prepare('SELECT 1 FROM dating_matches WHERE user_id = ? AND profile_id = ?')
+app.post('/api/dating/matches/:profileId/messages', async (request, response) => {
+  const matched = await db.prepare('SELECT 1 FROM dating_matches WHERE user_id = $1 AND profile_id = $2')
     .get(request.user.id, request.params.profileId);
   if (!matched) return response.status(404).json({ error: 'Match not found' });
   const { text } = request.body ?? {};
@@ -906,28 +906,28 @@ app.post('/api/dating/matches/:profileId/messages', (request, response) => {
     return response.status(400).json({ error: 'A message between 1 and 1000 characters is required' });
   }
   const id = randomUUID();
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO dating_messages (id, user_id, profile_id, sender, text)
-    VALUES (?, ?, ?, 'me', ?)
+    VALUES ($1, $2, $3, 'me', $4)
   `).run(id, request.user.id, request.params.profileId, text.trim());
   return response.status(201).json({
-    message: db.prepare(`
-      SELECT id, sender AS "from", text, created_at AS at FROM dating_messages WHERE id = ?
+    message: await db.prepare(`
+      SELECT id, sender AS "from", text, created_at AS at FROM dating_messages WHERE id = $1
     `).get(id),
   });
 });
 
-function getPodcastPlayerState(userId) {
-  const state = db.prepare(`
-    SELECT p.episode_id AS episodeId, p.is_playing AS isPlaying,
-      p.progress_seconds AS progressSeconds, e.duration_seconds AS seconds,
+async function getPodcastPlayerState(userId) {
+  const state = await db.prepare(`
+    SELECT p.episode_id AS "episodeId", p.is_playing AS "isPlaying",
+      p.progress_seconds AS "progressSeconds", e.duration_seconds AS seconds,
       e.title, e.summary, e.published, e.season, e.episode_number AS number,
-      e.audio_url AS audioUrl, e.show_id AS showId, s.title AS showTitle,
-      s.host AS showHost, s.art AS showArt
+      e.audio_url AS "audioUrl", e.show_id AS "showId", s.title AS "showTitle",
+      s.host AS "showHost", s.art AS "showArt"
     FROM podcast_player_states p
     JOIN podcast_episodes e ON e.id = p.episode_id
     JOIN podcast_shows s ON s.id = e.show_id
-    WHERE p.user_id = ?
+    WHERE p.user_id = $1
   `).get(userId);
   return {
     ...state,
@@ -980,6 +980,8 @@ app.use((error, _request, response, _next) => {
   console.error(error);
   return response.status(500).json({ error: 'Unexpected server error' });
 });
+
+await initializeDatabase();
 
 app.listen(port, () => {
   console.log(`BEDROOM POP server listening on http://localhost:${port}`);

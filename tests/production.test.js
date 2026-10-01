@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
+import 'dotenv/config';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
 import test from 'node:test';
-import Database from 'better-sqlite3';
+
+const { Pool } = pg;
+const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
 const password = 'a-night-in-the-listening-room';
 
@@ -20,9 +22,19 @@ async function availablePort() {
   return port;
 }
 
-test('production server serves the app and isolates authenticated feature data', async (context) => {
-  const directory = mkdtempSync(join(tmpdir(), 'bedroom-pop-production-'));
-  const databasePath = join(directory, 'test.sqlite');
+test('production server serves the app and isolates authenticated feature data', {
+  skip: databaseUrl ? false : 'Set TEST_DATABASE_URL to a migrated PostgreSQL database',
+}, async (context) => {
+  const testId = randomUUID();
+  const firstEmail = `june-${testId}@example.com`;
+  const secondEmail = `noor-${testId}@example.com`;
+  const databaseHost = new URL(databaseUrl).hostname;
+  const usesSupabaseSsl = databaseHost.endsWith('.pooler.supabase.com')
+    || databaseHost.endsWith('.supabase.co');
+  const database = new Pool({
+    connectionString: databaseUrl,
+    ssl: usesSupabaseSsl ? { rejectUnauthorized: true } : undefined,
+  });
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['backend/server.js'], {
@@ -31,7 +43,7 @@ test('production server serves the app and isolates authenticated feature data',
       ...process.env,
       NODE_ENV: 'production',
       PORT: String(port),
-      DATABASE_PATH: databasePath,
+      DATABASE_URL: databaseUrl,
       JWT_SECRET: 'production-integration-test-secret-long-enough-for-jwt',
       CORS_ORIGIN: baseUrl,
       YOUTUBE_API_KEY: '',
@@ -47,7 +59,8 @@ test('production server serves the app and isolates authenticated feature data',
       server.kill();
       await new Promise((resolve) => server.once('exit', resolve));
     }
-    rmSync(directory, { recursive: true, force: true });
+    await database.query('DELETE FROM users WHERE email = ANY($1::text[])', [[firstEmail, secondEmail]]);
+    await database.end();
   });
 
   async function waitForServer() {
@@ -111,28 +124,29 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal((await fetch(`${baseUrl}/api/music/mixes`)).status, 401, 'feature APIs require a session');
 
   const firstRegistration = await call('/api/auth/register', {
-    ...jsonRequest('POST', { displayName: 'June', email: 'june@example.com', password }),
+    ...jsonRequest('POST', { displayName: 'June', email: firstEmail, password }),
   });
   assert.equal(firstRegistration.response.status, 201);
   const firstUserId = firstRegistration.body.user.id;
   const firstCookie = cookieFrom(firstRegistration.response);
   assert.equal((await call('/api/auth/me', { cookie: firstCookie })).body.user.id, firstUserId);
 
-  const database = new Database(databasePath, { readonly: true });
-  const passwordHash = database.prepare('SELECT password_hash FROM users WHERE id = ?').get(firstUserId).password_hash;
-  database.close();
+  const { rows: [{ password_hash: passwordHash }] } = await database.query(
+    'SELECT password_hash FROM users WHERE id = $1',
+    [firstUserId],
+  );
   assert.match(passwordHash, /^\$2[aby]\$/, 'password is stored as a bcrypt hash');
 
   assert.equal(
     (await call('/api/auth/register', {
-      ...jsonRequest('POST', { displayName: 'June again', email: 'JUNE@example.com', password }),
+      ...jsonRequest('POST', { displayName: 'June again', email: firstEmail.toUpperCase(), password }),
     })).response.status,
     409,
     'registration rejects a case-insensitive duplicate email',
   );
 
   const login = await call('/api/auth/login', {
-    ...jsonRequest('POST', { email: 'JUNE@example.com', password }),
+    ...jsonRequest('POST', { email: firstEmail.toUpperCase(), password }),
   });
   assert.equal(login.response.status, 200);
   const secondCookie = cookieFrom(login.response);
@@ -209,7 +223,7 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal((await call('/api/dating/profiles', { cookie: secondCookie })).body.profiles.length, 4);
 
   const secondRegistration = await call('/api/auth/register', {
-    ...jsonRequest('POST', { displayName: 'Noor', email: 'noor@example.com', password }),
+    ...jsonRequest('POST', { displayName: 'Noor', email: secondEmail, password }),
   });
   assert.equal(secondRegistration.response.status, 201);
   const otherCookie = cookieFrom(secondRegistration.response);
