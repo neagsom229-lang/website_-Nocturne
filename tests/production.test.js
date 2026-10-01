@@ -143,7 +143,7 @@ test('production server serves the app and isolates authenticated feature data',
     headers: { Cookie: secondCookie, Origin: baseUrl },
   });
   assert.equal(unconfiguredVideoResponse.status, 503);
-  assert.match((await unconfiguredVideoResponse.json()).error, /YOUTUBE_API_KEY/);
+  assert.match((await unconfiguredVideoResponse.json()).error, /podcasts or audio/i);
 
   const savedMedia = await call('/api/library/save', {
     cookie: secondCookie,

@@ -10,6 +10,10 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import type FilePlayerInstance from 'react-player/file';
+import type SoundCloudPlayerInstance from 'react-player/soundcloud';
+import type YouTubePlayerInstance from 'react-player/youtube';
+import type { OnProgressProps } from 'react-player/base';
 import { useAuth } from '../auth/AuthContext';
 import { CoverArt } from './CoverArt';
 import { Icon, type IconName } from './Icon';
@@ -21,14 +25,16 @@ import {
   updateNowPlaying,
   type NowPlaying,
 } from '../lib/musicApi';
-const ReactPlayer = lazy(() => import('react-player'));
+const YouTubePlayer = lazy(() => import('react-player/youtube'));
+const SoundCloudPlayer = lazy(() => import('react-player/soundcloud'));
+const FilePlayer = lazy(() => import('react-player/file'));
 
 const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
 type ExternalMedia = {
   id?: string;
   type: 'video' | 'podcast' | 'audio';
-  provider: 'youtube' | 'itunes';
+  provider: 'youtube' | 'itunes' | 'soundcloud';
   externalId: string;
   title: string;
   artist: string | null;
@@ -93,6 +99,7 @@ type WorkspacePlayer = {
   nowPlaying: NowPlaying | null;
   externalMedia: ExternalMedia | null;
   externalPlaying: boolean;
+  buffering: boolean;
   progress: number;
   duration: number;
   error: string;
@@ -123,6 +130,7 @@ function PlayerDock() {
     nowPlaying,
     externalMedia,
     externalPlaying,
+    buffering,
     progress,
     duration,
     error,
@@ -219,6 +227,7 @@ function PlayerDock() {
           onChange={(event) => setVolume(Number(event.target.value))}
         />
       </div>
+      {buffering ? <span className="workspace-player__buffering" role="status"><i /> Loading media…</span> : null}
       {error ? <span className="workspace-player__error" role="status">{error}</span> : null}
     </footer>
   );
@@ -228,11 +237,13 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<FilePlayerInstance>(null);
+  const videoRef = useRef<YouTubePlayerInstance>(null);
+  const soundcloudRef = useRef<SoundCloudPlayerInstance>(null);
   const progressRef = useRef(0);
   const [externalMedia, setExternalMedia] = useState<ExternalMedia | null>(null);
   const [externalPlaying, setExternalPlaying] = useState(false);
+  const [buffering, setBuffering] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mixes, setMixes] = useState<Mix[]>([]);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
@@ -281,15 +292,9 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     if (!externalMedia && nowPlaying) {
       progressRef.current = nowPlaying.progressSeconds;
       setProgress(nowPlaying.progressSeconds);
-      if (audioRef.current?.readyState) {
-        audioRef.current.currentTime = nowPlaying.progressSeconds;
-      }
+      audioRef.current?.seekTo(nowPlaying.progressSeconds, 'seconds');
     }
   }, [nowPlaying?.track.id, playerReady]);
-
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -301,10 +306,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setExternalMedia(null);
     setExternalPlaying(false);
     setDuration(track.seconds);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
+    audioRef.current?.seekTo(0, 'seconds');
     try {
       const updated = await updateNowPlaying(mix, track, false, 0);
       setNowPlaying(updated);
@@ -318,24 +320,18 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   function playExternalMedia(media: ExternalMedia) {
     setError('');
+    setBuffering(true);
     setNowPlaying(null);
     setExternalMedia(media);
     setProgress(0);
     progressRef.current = 0;
     setDuration(0);
     if (media.type === 'video') {
-      audioRef.current?.pause();
       setExternalPlaying(true);
-    } else if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = media.streamUrl;
-      audioRef.current.load();
+    } else {
       setExternalPlaying(true);
-      void audioRef.current.play().catch((playError: unknown) => {
-        setExternalPlaying(false);
-        setError(playError instanceof Error ? playError.message : 'Audio playback could not start.');
-      });
     }
+    setBuffering(true);
   }
 
   async function persistPlayback(mix: Mix, track: Track, playing: boolean, seconds: number) {
@@ -348,20 +344,14 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   async function toggle() {
     if (externalMedia) {
       setError('');
-      if (externalMedia.type === 'video') {
+      if (externalMedia.type === 'video' || externalMedia.provider === 'soundcloud') {
         setExternalPlaying(!externalPlaying);
       } else if (!audioRef.current) {
         setError('Audio playback is not available.');
       } else if (externalPlaying) {
-        audioRef.current.pause();
         setExternalPlaying(false);
       } else {
-        try {
-          await audioRef.current.play();
-          setExternalPlaying(true);
-        } catch (playError) {
-          setError(playError instanceof Error ? playError.message : 'Audio playback could not start.');
-        }
+        setExternalPlaying(true);
       }
       return;
     }
@@ -373,7 +363,6 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     }
     setError('');
     if (nowPlaying.isPlaying) {
-      audioRef.current?.pause();
       try {
         await persistPlayback(mix, nowPlaying.track, false, progressRef.current);
       } catch (playError) {
@@ -382,10 +371,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       return;
     }
     try {
-      await audioRef.current?.play();
       await persistPlayback(mix, nowPlaying.track, true, progressRef.current);
     } catch (playError) {
-      audioRef.current?.pause();
       setError(playError instanceof Error ? playError.message : 'Audio playback could not start.');
     }
   }
@@ -415,10 +402,12 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   function seek(seconds: number) {
     progressRef.current = seconds;
     setProgress(seconds);
-    if (externalMedia?.type === 'video' && videoRef.current) {
-      videoRef.current.currentTime = seconds;
+    if (externalMedia?.provider === 'soundcloud' && soundcloudRef.current) {
+      soundcloudRef.current.seekTo(seconds, 'seconds');
+    } else if (externalMedia?.type === 'video' && videoRef.current) {
+      videoRef.current.seekTo(seconds, 'seconds');
     } else if (audioRef.current) {
-      audioRef.current.currentTime = seconds;
+      audioRef.current.seekTo(seconds, 'seconds');
     }
   }
 
@@ -437,7 +426,6 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setSignOutError('');
     try {
       await signOut();
-      audioRef.current?.pause();
       setExternalPlaying(false);
       navigate('/auth/login', { replace: true });
     } catch (signOutFailure) {
@@ -449,6 +437,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     if (!Number.isFinite(seconds)) return;
     progressRef.current = Math.floor(seconds);
     setProgress(seconds);
+    setBuffering(false);
   }
 
   const player: WorkspacePlayer = {
@@ -456,6 +445,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     nowPlaying,
     externalMedia,
     externalPlaying,
+    buffering,
     progress,
     duration,
     error,
@@ -614,46 +604,86 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           </main>
         </div>
 
-        {externalMedia?.type === 'video' ? (
+        {externalMedia?.type === 'video' || externalMedia?.provider === 'soundcloud' ? (
           <div className="workspace-video-window" aria-label={`Video player: ${externalMedia.title}`}>
             <Suspense fallback={<span className="workspace-video-loading" role="status">Opening the video player…</span>}>
-              <ReactPlayer
-                key={externalMedia.externalId}
-                ref={videoRef}
-                src={externalMedia.externalUrl ?? externalMedia.streamUrl}
-                playing={externalPlaying}
-                controls
-                volume={volume}
-                width="100%"
-                height="100%"
-                onTimeUpdate={(event) => updateProgress(event.currentTarget.currentTime)}
-                onDurationChange={(event) => setDuration(event.currentTarget.duration || 0)}
-                onEnded={() => setExternalPlaying(false)}
-                onError={() => setError('This video could not be played. The provider may have disabled embedding.')}
-                playsInline
-              />
+              {externalMedia.provider === 'soundcloud' ? (
+                <SoundCloudPlayer
+                  key={externalMedia.externalId}
+                  ref={soundcloudRef}
+                  url={externalMedia.externalUrl ?? externalMedia.streamUrl}
+                  playing={externalPlaying}
+                  controls
+                  volume={volume}
+                  width="100%"
+                  height="100%"
+                  onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
+                  onDuration={setDuration}
+                  onBuffer={() => setBuffering(true)}
+                  onBufferEnd={() => setBuffering(false)}
+                  onReady={() => setBuffering(false)}
+                  onEnded={() => setExternalPlaying(false)}
+                  onError={() => {
+                    setBuffering(false);
+                    setError('This SoundCloud item could not be played.');
+                  }}
+                />
+              ) : (
+                <YouTubePlayer
+                  key={externalMedia.externalId}
+                  ref={videoRef}
+                  url={externalMedia.externalUrl ?? externalMedia.streamUrl}
+                  playing={externalPlaying}
+                  controls
+                  volume={volume}
+                  width="100%"
+                  height="100%"
+                  onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
+                  onDuration={setDuration}
+                  onBuffer={() => setBuffering(true)}
+                  onBufferEnd={() => setBuffering(false)}
+                  onReady={() => setBuffering(false)}
+                  onEnded={() => setExternalPlaying(false)}
+                  onError={() => {
+                    setBuffering(false);
+                    setError('This video could not be played. The provider may have disabled embedding.');
+                  }}
+                  playsinline
+                />
+              )}
             </Suspense>
           </div>
         ) : null}
-        <audio
+        <Suspense fallback={<span className="sr-only" role="status">Loading audio player…</span>}>
+          <FilePlayer
+          className="workspace-file-player"
           ref={audioRef}
-          src={externalMedia?.type === 'audio' || externalMedia?.type === 'podcast'
+          key={externalMedia?.type === 'audio' || externalMedia?.type === 'podcast'
+            ? externalMedia.externalId
+            : 'nocturne-audio'}
+          url={externalMedia?.provider === 'itunes'
             ? externalMedia.streamUrl
             : DEMO_AUDIO_URL}
-          preload="metadata"
-          onLoadedMetadata={(event) => {
-            event.currentTarget.currentTime = progressRef.current;
-            setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0);
-          }}
-          onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-          onTimeUpdate={(event) => updateProgress(event.currentTarget.currentTime)}
+          playing={externalMedia?.provider === 'itunes'
+            ? externalPlaying
+            : Boolean(nowPlaying?.isPlaying)}
+          volume={volume}
+          width="1px"
+          height="1px"
+          progressInterval={500}
+          onReady={() => setBuffering(false)}
+          onBuffer={() => setBuffering(true)}
+          onBufferEnd={() => setBuffering(false)}
+          onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
+          onDuration={setDuration}
           onEnded={() => externalMedia ? setExternalPlaying(false) : void skip(1)}
           onError={() => {
-            if (externalMedia?.type !== 'video') {
-              setError('This audio could not be loaded. Check your connection or try another preview.');
-            }
+            setBuffering(false);
+            setError('This audio could not be loaded. Check your connection or try another preview.');
           }}
-        />
+          config={{ file: { forceAudio: true, forceDisableHls: true, forceDASH: false } }}
+          />
+        </Suspense>
         <PlayerDock />
       </div>
     </PlayerContext.Provider>

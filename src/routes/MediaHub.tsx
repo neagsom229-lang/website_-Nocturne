@@ -38,6 +38,8 @@ function MediaCard({
   onPlay,
   onSave,
   onDelete,
+  onCopy,
+  copied,
 }: {
   item: MediaItem;
   saved?: boolean;
@@ -46,6 +48,8 @@ function MediaCard({
   onPlay: () => void;
   onSave?: () => void;
   onDelete?: () => void;
+  onCopy?: () => void;
+  copied?: boolean;
 }) {
   return (
     <article className="media-card">
@@ -71,6 +75,11 @@ function MediaCard({
           {onDelete ? (
             <button className="btn btn--ghost btn--sm media-card__remove" type="button" onClick={onDelete} disabled={deleting}>
               <Icon name="trash" size={15} /> Remove
+            </button>
+          ) : null}
+          {onCopy ? (
+            <button className="btn btn--ghost btn--sm media-card__copy" type="button" onClick={onCopy}>
+              <Icon name={copied ? 'check' : 'share'} size={15} /> {copied ? 'Copied' : 'Copy Link'}
             </button>
           ) : null}
           <button className="media-card__play-link" type="button" onClick={onPlay}>
@@ -197,6 +206,7 @@ export function MusicLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState('');
+  const [copiedId, setCopiedId] = useState('');
   const { playExternalMedia } = useWorkspacePlayer();
 
   async function loadLibrary() {
@@ -227,6 +237,22 @@ export function MusicLibraryPage() {
     }
   }
 
+  async function copyLink(item: MediaItem) {
+    const url = item.externalUrl ?? item.streamUrl;
+    setError('');
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(item.id ?? item.externalId);
+      window.setTimeout(() => setCopiedId((current) => (
+        current === (item.id ?? item.externalId) ? '' : current
+      )), 1800);
+    } catch (copyError) {
+      setError(copyError instanceof Error
+        ? `Could not copy the link: ${copyError.message}`
+        : 'Could not copy the link. Check your browser clipboard permissions.');
+    }
+  }
+
   return (
     <section className="media-page">
       <header className="media-page__heading media-page__heading--compact">
@@ -244,6 +270,8 @@ export function MusicLibraryPage() {
               onPlay={() => playExternalMedia(item)}
               deleting={deletingId === item.id}
               onDelete={() => void remove(item)}
+              onCopy={() => void copyLink(item)}
+              copied={copiedId === (item.id ?? item.externalId)}
             />
           ))}
         </div>

@@ -671,8 +671,69 @@
   font-size: 12px;
 }
 
+.workspace-player__buffering {
+  position: absolute;
+  right: 20px;
+  bottom: calc(100% + 7px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in oklab, var(--tp-acc) 32%, var(--tp-line));
+  border-radius: 99px;
+  color: var(--tp-ink);
+  background: color-mix(in oklab, var(--tp-surf) 95%, transparent);
+  box-shadow: var(--tp-sh-sm);
+  font-size: 11px;
+  animation: workspace-enter 180ms var(--tp-ease) both;
+}
+
+.workspace-player__buffering i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in oklab, var(--tp-acc) 28%, transparent);
+  border-top-color: var(--tp-acc);
+  border-radius: 50%;
+  animation: workspace-spinner 700ms linear infinite;
+}
+
+.route-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-height: 100dvh;
+  color: var(--tp-mute);
+  background: var(--tp-canvas);
+  font-size: 13px;
+}
+
+.route-loading__spinner {
+  width: 17px;
+  height: 17px;
+  border: 2px solid color-mix(in oklab, var(--tp-acc) 25%, transparent);
+  border-top-color: var(--tp-acc);
+  border-radius: 50%;
+  animation: workspace-spinner 700ms linear infinite;
+}
+
+@keyframes workspace-spinner {
+  to { transform: rotate(360deg); }
+}
+
 .workspace > audio {
   display: none;
+}
+
+.workspace-file-player {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .workspace-video-window {

@@ -382,7 +382,7 @@ app.get('/api/search', searchLimiter, async (request, response, next) => {
     if (error instanceof MediaSearchError) {
       if (error.status >= 500) console.error(`Media search provider error: ${error.code}`);
       const message = error.code === 'youtube_not_configured'
-        ? 'YouTube search is not configured. Set YOUTUBE_API_KEY on the server.'
+        ? 'YouTube search is not ready yet. Try podcasts or audio while we finish setting up video search.'
         : 'The media search provider could not complete the request.';
       return response.status(error.status).json({ error: message });
     }
