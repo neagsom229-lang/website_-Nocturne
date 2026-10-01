@@ -1,11 +1,14 @@
 ALTER TABLE media_library
+  ADD COLUMN IF NOT EXISTS external_id TEXT,
   ADD COLUMN IF NOT EXISTS media_type TEXT,
   ADD COLUMN IF NOT EXISTS external_source TEXT,
+  ADD COLUMN IF NOT EXISTS thumbnail_url TEXT,
   ADD COLUMN IF NOT EXISTS duration_seconds INTEGER,
   ADD COLUMN IF NOT EXISTS release_year INTEGER,
   ADD COLUMN IF NOT EXISTS rating NUMERIC,
   ADD COLUMN IF NOT EXISTS description TEXT,
-  ADD COLUMN IF NOT EXISTS trailer_url TEXT;
+  ADD COLUMN IF NOT EXISTS trailer_url TEXT,
+  ADD COLUMN IF NOT EXISTS stream_url TEXT;
 
 ALTER TABLE media_library
   DROP CONSTRAINT IF EXISTS media_library_media_type_check,
