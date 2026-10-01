@@ -408,6 +408,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setProgress(seconds);
     if (externalMedia?.provider === 'soundcloud' && soundcloudRef.current) {
       soundcloudRef.current.seekTo(seconds, 'seconds');
+    } else if (externalMedia?.mediaType === 'video_podcast' && audioRef.current) {
+      audioRef.current.seekTo(seconds, 'seconds');
     } else if (externalMedia?.type === 'video' && videoRef.current) {
       videoRef.current.seekTo(seconds, 'seconds');
     } else if (audioRef.current) {
@@ -639,7 +641,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             ref={videoWindowRef}
           >
             <Suspense fallback={<span className="workspace-video-loading" role="status">Opening the video player…</span>}>
-              {externalMedia.mediaType === 'video_podcast' ? (
+              {externalMedia.mediaType === 'video_podcast' && externalPlaying ? (
                 <FilePlayer
                   key={externalMedia.externalId}
                   ref={audioRef}
