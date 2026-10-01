@@ -115,9 +115,11 @@ test('production server serves the app and isolates authenticated feature data',
   });
 
   await waitForServer();
-  const healthResponse = await fetch(`${baseUrl}/api/health`);
-  assert.equal(healthResponse.status, 200);
-  assert.deepEqual(await healthResponse.json(), { status: 'ok' });
+  await context.test('GET /api/health works without auth', async () => {
+    const healthResponse = await fetch(`${baseUrl}/api/health`);
+    assert.equal(healthResponse.status, 200);
+    assert.deepEqual(await healthResponse.json(), { status: 'ok' });
+  });
   const databaseAddress = new URL(databaseUrl);
   assert.ok(
     logs.includes(`Connected to PostgreSQL at ${databaseAddress.hostname}:${databaseAddress.port || '5432'}`),

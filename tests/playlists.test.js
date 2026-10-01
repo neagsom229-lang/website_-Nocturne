@@ -10,9 +10,12 @@ class MemoryPlaylistDatabase {
     this.media = [
       { id: 'media-one', userId: 'owner', type: 'audio', mediaType: 'music', title: 'Soft Static' },
       { id: 'media-two', userId: 'owner', type: 'audio', mediaType: 'music', title: 'Room Tone' },
+      { id: 'media-three', userId: 'owner', type: 'audio', mediaType: 'music', title: 'Window Rain' },
     ];
     this.nextPlaylistId = 1;
     this.nextItemId = 1;
+    this.transactionCount = 0;
+    this.transactionUpdateCounts = [];
   }
 
   prepare(sql) {
@@ -116,7 +119,10 @@ class MemoryPlaylistDatabase {
         if (query.startsWith('update playlist_items set position')) {
           const [id, playlistId, position] = params;
           const item = this.items.find((entry) => entry.id === id && entry.playlistId === playlistId);
-          if (item) item.position = position;
+          if (item) {
+            item.position = position;
+            this.currentTransactionUpdateCount += 1;
+          }
           return { changes: item ? 1 : 0 };
         }
         if (query.startsWith('delete from playlist_items')) {
@@ -138,7 +144,11 @@ class MemoryPlaylistDatabase {
   }
 
   async transaction(callback) {
-    return callback(this);
+    this.transactionCount += 1;
+    this.currentTransactionUpdateCount = 0;
+    const value = await callback(this);
+    this.transactionUpdateCounts.push(this.currentTransactionUpdateCount);
+    return value;
   }
 }
 
@@ -188,8 +198,23 @@ test('creating a playlist returns a validated playlist shape', async () => {
   });
 });
 
-test('adding items appends positions and valid reorder changes their order', async () => {
+test('GET /mine with auth returns the current user playlist array', async () => {
   await withPlaylistsServer(async ({ call }) => {
+    const created = await call('/api/playlists', {
+      user: 'owner',
+      method: 'POST',
+      body: { name: 'After Hours' },
+    });
+    assert.equal(created.response.status, 201);
+    const result = await call('/api/playlists/mine', { user: 'owner' });
+    assert.equal(result.response.status, 200);
+    assert.ok(Array.isArray(result.body.playlists));
+    assert.equal(result.body.playlists[0].name, 'After Hours');
+  });
+});
+
+test('adding items appends positions and reorder is transactional and gap-free', async () => {
+  await withPlaylistsServer(async ({ call, database }) => {
     const created = await call('/api/playlists', {
       user: 'owner',
       method: 'POST',
@@ -206,20 +231,44 @@ test('adding items appends positions and valid reorder changes their order', asy
       method: 'POST',
       body: { media_library_id: 'media-two' },
     });
+    const third = await call(`/api/playlists/${playlistId}/items`, {
+      user: 'owner',
+      method: 'POST',
+      body: { media_library_id: 'media-three' },
+    });
     assert.equal(first.body.item.position, 1);
     assert.equal(second.body.item.position, 2);
+    assert.equal(third.body.item.position, 3);
 
     const reordered = await call(`/api/playlists/${playlistId}/reorder`, {
       user: 'owner',
       method: 'POST',
-      body: { item_ids: [second.body.item.id, first.body.item.id] },
+      body: { item_ids: [third.body.item.id, first.body.item.id, second.body.item.id] },
     });
     assert.equal(reordered.response.status, 200);
     assert.deepEqual(reordered.body.items.map((item) => item.id), [
-      second.body.item.id,
+      third.body.item.id,
       first.body.item.id,
+      second.body.item.id,
     ]);
-    assert.deepEqual(reordered.body.items.map((item) => item.position), [1, 2]);
+    assert.deepEqual(reordered.body.items.map((item) => item.position), [1, 2, 3]);
+    assert.equal(database.transactionUpdateCounts.at(-1), 3);
+
+    const invalid = await call(`/api/playlists/${playlistId}/reorder`, {
+      user: 'owner',
+      method: 'POST',
+      body: { item_ids: [first.body.item.id, second.body.item.id] },
+    });
+    assert.equal(invalid.response.status, 400);
+    assert.equal(invalid.body.error, 'item_ids must contain every playlist item exactly once.');
+    assert.equal(database.transactionUpdateCounts.at(-1), 0);
+    assert.deepEqual(
+      database.items
+        .filter((item) => item.playlistId === playlistId)
+        .sort((left, right) => left.position - right.position)
+        .map((item) => item.position),
+      [1, 2, 3],
+    );
   });
 });
 
