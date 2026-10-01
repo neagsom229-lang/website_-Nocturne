@@ -13,7 +13,7 @@ ALTER TABLE media_library
 ALTER TABLE media_library
   DROP CONSTRAINT IF EXISTS media_library_media_type_check,
   ADD CONSTRAINT media_library_media_type_check
-    CHECK (media_type IS NULL OR media_type IN ('music', 'podcast', 'movie', 'video_podcast')),
+    CHECK (media_type IS NULL OR media_type IN ('music', 'podcast', 'movie', 'tv', 'video_podcast')),
   DROP CONSTRAINT IF EXISTS media_library_external_source_check,
   ADD CONSTRAINT media_library_external_source_check
     CHECK (external_source IS NULL OR external_source IN ('tmdb', 'omdb', 'itunes', 'deezer')),
