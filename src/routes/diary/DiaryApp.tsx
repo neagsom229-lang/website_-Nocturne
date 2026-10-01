@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import { AppShell } from '../../components/AppShell';
 import { CoverArt } from '../../components/CoverArt';
+import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '../../components/Icon';
 import { PageBar } from '../../components/PageBar';
 import { TabBar } from '../../components/TabBar';
@@ -58,6 +59,7 @@ function EntryCard({ entry }: { entry: SavedJournalEntry }) {
 }
 
 export function DiaryHome() {
+  const location = useLocation();
   const [entries, setEntries] = useState<SavedJournalEntry[]>([]);
   const [stats, setStats] = useState<JournalStats | null>(null);
   const [filter, setFilter] = useState<Mood | 'all'>('all');
@@ -66,10 +68,12 @@ export function DiaryHome() {
   const [artist, setArtist] = useState('');
   const [note, setNote] = useState('');
   const [rating, setRating] = useState(5);
+  const [loadingEntries, setLoadingEntries] = useState(true);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
   async function load() {
+    setLoadingEntries(true);
     try {
       const [loadedEntries, loadedStats] = await Promise.all([
         fetchJournalEntries(filter),
@@ -80,9 +84,16 @@ export function DiaryHome() {
       setError('');
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your song diary.');
+    } finally {
+      setLoadingEntries(false);
     }
   }
   useEffect(() => { void load(); }, [filter]);
+  useEffect(() => {
+    if (location.pathname === '/mood') {
+      document.getElementById('check-in')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.pathname]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,7 +197,15 @@ export function DiaryHome() {
         </div>
         <div className="diary-entry-list">
           {entries.map((entry) => <EntryCard key={entry.id} entry={entry} />)}
-          {!entries.length && !error ? <p className="t-small t-mute">No entries for this mood just yet.</p> : null}
+          {loadingEntries ? <div className="media-skeleton" role="status" aria-label="Loading diary entries"><div className="media-skeleton__art" /><div className="media-skeleton__line media-skeleton__line--title" /><div className="media-skeleton__line" /></div> : null}
+          {!loadingEntries && !entries.length && !error ? (
+            <EmptyState
+              icon="book"
+              title="Your diary is still a blank page."
+              body="Save a song and a small truth to begin keeping the nights that matter."
+              action={<Link to="/mood" className="btn btn--primary btn--sm"><Icon name="edit" size={15} /> Write your first entry</Link>}
+            />
+          ) : null}
         </div>
       </section>
       <aside className="diary-quote">
@@ -213,7 +232,7 @@ export function DiaryStats() {
         <h1 className="t-h1">A soft kind<br /><em>of showing up.</em></h1>
         <p className="t-body">Not a score. Just proof that you were here for the songs.</p>
       </header>
-      {stats ? (
+      {stats && stats.entries > 0 ? (
         <>
           <section className="diary-stats-grid">
             <article><span>nights in a row</span><strong>{stats.streakDays}</strong><small>you kept coming back</small></article>
@@ -233,6 +252,13 @@ export function DiaryStats() {
           </section>
           <Link to="/diary" className="btn btn--ghost diary-stats-back"><Icon name="chevron-left" size={16} /> Back to the diary</Link>
         </>
+      ) : stats?.entries === 0 ? (
+        <EmptyState
+          icon="dial"
+          title="Your year is still unfolding."
+          body="Keep a few song diary entries and this quiet little overview will begin to fill in."
+          action={<Link to="/diary" className="btn btn--primary btn--sm">Write an entry</Link>}
+        />
       ) : !error ? <p className="t-small t-mute">Counting the songs you kept…</p> : null}
     </DiaryFrame>
   );

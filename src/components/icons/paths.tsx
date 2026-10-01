@@ -114,6 +114,13 @@ export const ICON_GLYPHS = {
       <path d="M15.4 15.4 20 20" />
     </>
   ),
+  menu: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </>
+  ),
   bookmark: <path d="M7.2 4.6h9.6a1 1 0 0 1 1 1V20l-5.8-3.5L6.2 20V5.6a1 1 0 0 1 1-1Z" />,
   'bookmark-filled': (
     <path

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { AppShell } from '../../components/AppShell';
 import { CoverArt } from '../../components/CoverArt';
+import { EmptyState } from '../../components/EmptyState';
 import { Icon } from '../../components/Icon';
 import { PageBar } from '../../components/PageBar';
 import { TabBar } from '../../components/TabBar';
@@ -193,9 +194,11 @@ export function DatingHome() {
 export function DatingMatches() {
   const [matches, setMatches] = useState<DatingMatch[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     void fetchDatingMatches().then(setMatches).catch((loadError: unknown) =>
-      setError(loadError instanceof Error ? loadError.message : 'Could not load matches.'));
+      setError(loadError instanceof Error ? loadError.message : 'Could not load matches.')
+    ).finally(() => setLoading(false));
   }, []);
   return (
     <DatingFrame>
@@ -217,7 +220,15 @@ export function DatingMatches() {
             {match.unread ? <span className="dating-match-row__unread" aria-label={`${match.unread} recent messages`}>{Math.min(match.unread, 9)}</span> : <Icon name="chevron-right" size={18} />}
           </Link>
         ))}
-        {!matches.length && !error ? <div className="dating-empty"><p className="t-serif-italic">No matches yet. Someone is still writing their hello.</p><Link to="/lowlight" className="btn btn--primary btn--sm">Meet someone</Link></div> : null}
+        {loading ? <div className="media-skeleton" role="status" aria-label="Loading matches"><div className="media-skeleton__art" /><div className="media-skeleton__line media-skeleton__line--title" /></div> : null}
+        {!loading && !matches.length && !error ? (
+          <EmptyState
+            icon="heart"
+            title="No matches yet, and no rush."
+            body="Meet someone new when you’re ready. Your next conversation can start with a song."
+            action={<Link to="/lowlight" className="btn btn--primary btn--sm">Meet someone</Link>}
+          />
+        ) : null}
       </section>
       <section className="dating-match-note"><Icon name="heart" size={18} /><p className="t-small">Connection moves at your own speed. You can always come back to a conversation later.</p></section>
     </DatingFrame>

@@ -33,8 +33,11 @@ before deploying the API to Vercel.
 | `PORT` | Provider supplied | The HTTP port. The server also accepts `API_PORT` for local development. |
 | `CORS_ORIGIN` | Optional | Comma-separated trusted browser origins. Same-origin requests are allowed automatically; add any separate frontend origin explicitly. |
 | `TRUST_PROXY` | Optional | Set to `1` only when running behind one trusted HTTPS reverse proxy, as on Render. |
+| `YOUTUBE_API_KEY` | Optional | Server-only Google YouTube Data API v3 key for `/api/search?type=video`. Video search returns `503` until configured. Never expose the key in frontend code or commit it. |
 
-No external API keys are required by this deployment.
+YouTube search requires an API key; podcast episodes and song previews use the
+iTunes Search API and do not require a key. Add `YOUTUBE_API_KEY` to the
+server's environment or your ignored local `.env` file when ready.
 
 ## Run in Docker Compose
 

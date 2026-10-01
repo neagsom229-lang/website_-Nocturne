@@ -11,6 +11,7 @@ import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { db, initializeUserData } from './db.js';
+import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -232,6 +233,14 @@ const authLimiter = rateLimit({
   message: { error: 'Too many sign-in attempts. Take a breath and try again in a little while.' },
 });
 
+const searchLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many searches. Please try again in a little while.' },
+});
+
 app.post('/api/auth/register', authLimiter, async (request, response) => {
   const { displayName, email, password } = request.body ?? {};
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -325,6 +334,124 @@ app.post('/api/auth/logout', (request, response) => {
 });
 
 app.use('/api', authenticate);
+
+app.get('/api/search', searchLimiter, async (request, response, next) => {
+  const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
+  const type = request.query.type;
+  if (!query || query.length > 200) {
+    return response.status(400).json({ error: 'A search query of 1 to 200 characters is required' });
+  }
+  if (!['video', 'podcast', 'audio'].includes(type)) {
+    return response.status(400).json({ error: 'type must be "video", "podcast", or "audio"' });
+  }
+
+  const cacheQuery = query.toLowerCase();
+  const cached = db.prepare(`
+    SELECT response_json AS responseJson FROM search_cache
+    WHERE query = ? AND type = ? AND expires_at > datetime('now')
+  `).get(cacheQuery, type);
+  if (cached) {
+    try {
+      return response.json({ query, type, results: JSON.parse(cached.responseJson), cached: true });
+    } catch (error) {
+      console.error('Invalid media search cache entry:', error);
+      db.prepare('DELETE FROM search_cache WHERE query = ? AND type = ?').run(cacheQuery, type);
+    }
+  }
+
+  try {
+    const results = await searchExternalMedia(query, type);
+    db.prepare(`
+      INSERT INTO search_cache (query, type, response_json, expires_at)
+      VALUES (?, ?, ?, datetime('now', '+15 minutes'))
+      ON CONFLICT(query, type) DO UPDATE SET
+        response_json = excluded.response_json,
+        expires_at = excluded.expires_at
+    `).run(cacheQuery, type, JSON.stringify(results));
+    db.prepare("DELETE FROM search_cache WHERE expires_at <= datetime('now')").run();
+    db.prepare(`
+      DELETE FROM search_cache
+      WHERE rowid IN (
+        SELECT rowid FROM search_cache
+        ORDER BY expires_at DESC
+        LIMIT -1 OFFSET 1000
+      )
+    `).run();
+    return response.json({ query, type, results, cached: false });
+  } catch (error) {
+    if (error instanceof MediaSearchError) {
+      if (error.status >= 500) console.error(`Media search provider error: ${error.code}`);
+      const message = error.code === 'youtube_not_configured'
+        ? 'YouTube search is not configured. Set YOUTUBE_API_KEY on the server.'
+        : 'The media search provider could not complete the request.';
+      return response.status(error.status).json({ error: message });
+    }
+    return next(error);
+  }
+});
+
+app.get('/api/library', (request, response) => {
+  const items = db.prepare(`
+    SELECT id, type, provider, external_id AS externalId, title, artist,
+      thumbnail_url AS thumbnailUrl, stream_url AS streamUrl,
+      external_url AS externalUrl, created_at AS createdAt
+    FROM media_library WHERE user_id = ?
+    ORDER BY created_at DESC, rowid DESC
+  `).all(request.user.id);
+  return response.json({ items });
+});
+
+app.post('/api/library/save', (request, response) => {
+  const {
+    type, provider, externalId, title, artist = null,
+    thumbnailUrl = null, streamUrl, externalUrl = null,
+  } = request.body ?? {};
+  const validUrl = (value, required = false) => {
+    if (value === null || value === undefined) return !required;
+    if (typeof value !== 'string' || value.length > 2048) return false;
+    try {
+      return new URL(value).protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+  if (
+    !['video', 'podcast', 'audio'].includes(type) ||
+    !['youtube', 'itunes'].includes(provider) ||
+    (provider === 'youtube' && type !== 'video') ||
+    (provider === 'itunes' && type === 'video') ||
+    typeof externalId !== 'string' || !externalId.trim() || externalId.length > 200 ||
+    typeof title !== 'string' || !title.trim() || title.length > 300 ||
+    (artist !== null && (typeof artist !== 'string' || artist.length > 300)) ||
+    !validUrl(thumbnailUrl) || !validUrl(streamUrl, true) || !validUrl(externalUrl)
+  ) {
+    return response.status(400).json({ error: 'Provide valid media metadata and secure HTTPS URLs' });
+  }
+
+  const id = randomUUID();
+  const saved = db.prepare(`
+    INSERT OR IGNORE INTO media_library
+      (id, user_id, type, provider, external_id, title, artist, thumbnail_url, stream_url, external_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, request.user.id, type, provider, externalId.trim(), title.trim(),
+    artist?.trim() || null, thumbnailUrl, streamUrl, externalUrl,
+  );
+  const item = db.prepare(`
+    SELECT id, type, provider, external_id AS externalId, title, artist,
+      thumbnail_url AS thumbnailUrl, stream_url AS streamUrl,
+      external_url AS externalUrl, created_at AS createdAt
+    FROM media_library WHERE user_id = ? AND provider = ? AND external_id = ?
+  `).get(request.user.id, provider, externalId.trim());
+  return response.status(saved.changes ? 201 : 200).json({ item, alreadySaved: !saved.changes });
+});
+
+app.delete('/api/library/:itemId', (request, response) => {
+  const result = db.prepare('DELETE FROM media_library WHERE id = ? AND user_id = ?')
+    .run(request.params.itemId, request.user.id);
+  if (!result.changes) return response.status(404).json({ error: 'Library item not found' });
+  return response.status(204).end();
+});
 
 app.get('/api/music/mixes', (_request, response) => {
   response.json({ mixes: getMixes() });

@@ -34,6 +34,7 @@ test('production server serves the app and isolates authenticated feature data',
       DATABASE_PATH: databasePath,
       JWT_SECRET: 'production-integration-test-secret-long-enough-for-jwt',
       CORS_ORIGIN: baseUrl,
+      YOUTUBE_API_KEY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -91,7 +92,18 @@ test('production server serves the app and isolates authenticated feature data',
 
   await waitForServer();
 
-  for (const path of ['/', '/landing', '/auth/login', '/auth/register', '/static/shows']) {
+  assert.equal((await fetch(`${baseUrl}/api/search?q=music&type=video`)).status, 401);
+  for (const path of [
+    '/',
+    '/landing',
+    '/auth/login',
+    '/auth/register',
+    '/static/shows',
+    '/search?q=late%20night&type=podcast',
+    '/library',
+    '/mood',
+    '/settings/appearance',
+  ]) {
     const response = await fetch(`${baseUrl}${path}`);
     assert.equal(response.status, 200, `${path} serves the React application`);
     assert.match(await response.text(), /id="root"/);
@@ -126,6 +138,52 @@ test('production server serves the app and isolates authenticated feature data',
   const secondCookie = cookieFrom(login.response);
   assert.equal(login.body.user.id, firstUserId);
 
+  assert.equal((await call('/api/search?q=music&type=unknown', { cookie: secondCookie })).response.status, 400);
+  const unconfiguredVideoResponse = await fetch(`${baseUrl}/api/search?q=music&type=video`, {
+    headers: { Cookie: secondCookie, Origin: baseUrl },
+  });
+  assert.equal(unconfiguredVideoResponse.status, 503);
+  assert.match((await unconfiguredVideoResponse.json()).error, /YOUTUBE_API_KEY/);
+
+  const savedMedia = await call('/api/library/save', {
+    cookie: secondCookie,
+    ...jsonRequest('POST', {
+      type: 'video',
+      provider: 'youtube',
+      externalId: 'video-123',
+      title: 'A song to keep',
+      artist: 'June',
+      thumbnailUrl: 'https://img.example/video.jpg',
+      streamUrl: 'https://www.youtube.com/embed/video-123',
+      externalUrl: 'https://www.youtube.com/watch?v=video-123',
+    }),
+  });
+  assert.equal(savedMedia.response.status, 201);
+  const libraryItemId = savedMedia.body.item.id;
+  assert.equal((await call('/api/library', { cookie: secondCookie })).body.items.length, 1);
+  const duplicateMedia = await call('/api/library/save', {
+    cookie: secondCookie,
+    ...jsonRequest('POST', {
+      type: 'video',
+      provider: 'youtube',
+      externalId: 'video-123',
+      title: 'A song to keep',
+      streamUrl: 'https://www.youtube.com/embed/video-123',
+    }),
+  });
+  assert.equal(duplicateMedia.response.status, 200);
+  assert.equal(duplicateMedia.body.alreadySaved, true);
+  assert.equal((await call('/api/library/save', {
+    cookie: secondCookie,
+    ...jsonRequest('POST', {
+      type: 'audio',
+      provider: 'itunes',
+      externalId: 'bad-url',
+      title: 'Insecure source',
+      streamUrl: 'http://audio.example/track.mp3',
+    }),
+  })).response.status, 400);
+
   assert.equal((await call('/api/music/mixes', { cookie: secondCookie })).body.mixes.length, 6);
   assert.equal((await call('/api/podcasts/shows', { cookie: secondCookie })).body.shows.length, 3);
   assert.equal((await call('/api/podcasts/listen-later', { cookie: secondCookie })).body.episodes.length, 0);
@@ -156,6 +214,17 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal(secondRegistration.response.status, 201);
   const otherCookie = cookieFrom(secondRegistration.response);
   assert.notEqual(secondRegistration.body.user.id, firstUserId);
+  assert.equal((await call('/api/library', { cookie: otherCookie })).body.items.length, 0);
+  assert.equal((await call(`/api/library/${libraryItemId}`, {
+    method: 'DELETE',
+    cookie: otherCookie,
+  })).response.status, 404);
+  assert.equal((await call('/api/library', { cookie: secondCookie })).body.items.length, 1);
+  assert.equal((await call(`/api/library/${libraryItemId}`, {
+    method: 'DELETE',
+    cookie: secondCookie,
+  })).response.status, 204);
+  assert.equal((await call('/api/library', { cookie: secondCookie })).body.items.length, 0);
   assert.equal((await call('/api/podcasts/listen-later', { cookie: otherCookie })).body.episodes.length, 0);
   assert.equal((await call('/api/journal/entries', { cookie: otherCookie })).body.entries.length, 0);
   assert.equal((await call('/api/dating/profiles', { cookie: otherCookie })).body.profiles.length, 4);

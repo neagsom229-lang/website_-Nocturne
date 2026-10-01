@@ -1,13 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { WorkspaceShell } from '../components/WorkspaceShell';
 import { useAuth } from './AuthContext';
 
 export function ProtectedRoutes() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [error, setError] = useState('');
 
   if (loading) {
     return <main className="auth-loading" role="status">Turning the little key…</main>;
@@ -16,26 +15,7 @@ export function ProtectedRoutes() {
     return <Navigate to="/auth/login" replace state={{ from: location }} />;
   }
 
-  async function onSignOut() {
-    setError('');
-    try {
-      await signOut();
-      navigate('/auth/login', { replace: true });
-    } catch (logoutError) {
-      setError(logoutError instanceof Error ? logoutError.message : 'Could not sign out.');
-    }
-  }
-
-  return (
-    <>
-      <div className="auth-session-bar">
-        <span><Icon name="user" size={14} /> {user.displayName}</span>
-        <button type="button" onClick={() => void onSignOut()}>Sign out</button>
-      </div>
-      {error ? <div className="auth-session-error" role="alert">{error}</div> : null}
-      <Outlet />
-    </>
-  );
+  return <WorkspaceShell><Outlet /></WorkspaceShell>;
 }
 
 function AuthCard({ children, mode }: { children: ReactNode; mode: 'login' | 'register' }) {
@@ -129,4 +109,3 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     </AuthCard>
   );
 }
-

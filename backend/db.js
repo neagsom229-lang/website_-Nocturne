@@ -106,6 +106,32 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS media_library (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
+    provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes')),
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artist TEXT,
+    thumbnail_url TEXT,
+    stream_url TEXT NOT NULL,
+    external_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, provider, external_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS media_library_user_created
+    ON media_library(user_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS search_cache (
+    query TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
+    response_json TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    PRIMARY KEY (query, type)
+  );
+
   CREATE TABLE IF NOT EXISTS journal_entries (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
