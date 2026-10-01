@@ -44,6 +44,17 @@ If the database password contains URI-reserved characters, percent-encode
 those characters in the connection URI. Never paste the connection string or
 password into source files, issues, or logs.
 
+## Keeping the Free Tier Awake
+
+Render's free web services spin down after 15 minutes without incoming traffic,
+which can make the next request take longer while the service starts again.
+To keep it active, create an HTTP(s) monitor in [UptimeRobot](https://uptimerobot.com/)
+for `https://<your-service>.onrender.com/api/health` and set its monitoring
+interval to 5 minutes. The health endpoint responds to these regular checks.
+
+Alternatively, upgrade the Render service to the Starter plan ($7/month) to
+remove the free-tier sleep limit.
+
 ## Required Render Environment Variables
 
 The Blueprint configures `NODE_ENV=production` and `TRUST_PROXY=1`, and
