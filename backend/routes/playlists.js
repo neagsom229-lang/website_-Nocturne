@@ -38,6 +38,25 @@ async function requireOwner(database, request, response) {
   return playlist;
 }
 
+export async function listPublicPlaylists(database, { sort = 'popular', limit = 8, offset = 0 } = {}) {
+  const order = sort === 'popular'
+    ? '"itemCount" DESC, p.created_at DESC'
+    : 'p.created_at DESC';
+  return database.prepare(`
+    SELECT p.id, p.name, p.description, p.is_public AS "isPublic",
+      p.cover_url AS "coverUrl", p.created_at AS "createdAt",
+      COUNT(pi.id)::int AS "itemCount",
+      u.display_name AS "ownerDisplayName"
+    FROM playlists p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
+    WHERE p.is_public = true
+    GROUP BY p.id, u.display_name
+    ORDER BY ${order}
+    LIMIT $1 OFFSET $2
+  `).all(limit, offset);
+}
+
 export function createPlaylistsRouter({ database, authenticate }) {
   const router = Router();
 
@@ -91,22 +110,7 @@ export function createPlaylistsRouter({ database, authenticate }) {
       return response.status(400).json({ error: 'limit must be 1 to 100 and offset must be a non-negative integer.' });
     }
 
-    const order = sort === 'popular'
-      ? '"itemCount" DESC, p.created_at DESC'
-      : 'p.created_at DESC';
-    const playlists = await database.prepare(`
-      SELECT p.id, p.name, p.description, p.is_public AS "isPublic",
-        p.cover_url AS "coverUrl", p.created_at AS "createdAt",
-        COUNT(pi.id)::int AS "itemCount",
-        u.display_name AS "ownerDisplayName"
-      FROM playlists p
-      JOIN users u ON u.id = p.user_id
-      LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
-      WHERE p.is_public = true
-      GROUP BY p.id, u.display_name
-      ORDER BY ${order}
-      LIMIT $1 OFFSET $2
-    `).all(limit, offset);
+    const playlists = await listPublicPlaylists(database, { sort, limit, offset });
     return response.json({ playlists, sort, limit, offset });
   });
 

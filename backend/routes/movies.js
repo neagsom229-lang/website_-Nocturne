@@ -13,6 +13,7 @@ import {
   normalizeMovieDetails,
   searchMovies,
 } from '../services/movieSearch.js';
+import { getCachedGenreRecommendations, refreshGenreRecommendations } from '../services/movieGenreCache.js';
 
 const router = Router();
 const CACHE_TTL = "INTERVAL '24 hours'";
@@ -92,6 +93,20 @@ router.get('/upcoming', async (_request, response) => {
   }
 });
 
+router.get('/genre/:genreId', async (request, response) => {
+  const genreId = Number(request.params.genreId);
+  if (!Number.isInteger(genreId) || genreId < 1) {
+    return response.status(400).json({ error: 'A positive TMDB genre ID is required.' });
+  }
+  try {
+    let results = await getCachedGenreRecommendations(db, genreId);
+    if (!results) results = await refreshGenreRecommendations(db, genreId);
+    return response.json({ results });
+  } catch (error) {
+    return handleProviderError(error, response);
+  }
+});
+
 router.post('/save', async (request, response) => {
   const { tmdb_id: tmdbId, media_type: mediaType = 'movie' } = request.body ?? {};
   if (
@@ -103,40 +118,71 @@ router.post('/save', async (request, response) => {
 
   const id = String(Number(tmdbId));
   try {
-    const details = await cachedTmdb(mediaType === 'movie' ? `detail:${id}` : `tv-detail:${id}`, async () => {
+    let details = await cachedTmdb(mediaType === 'movie' ? `detail:${id}` : `tv-detail:${id}`, async () => {
       const [movie, videos] = mediaType === 'tv'
         ? await Promise.all([getTvDetails(id), getTvVideos(id)])
         : await Promise.all([getMovieDetails(id), getMovieVideos(id)]);
       return normalizeMovieDetails(movie, Array.isArray(videos.results) ? videos.results : []);
     });
-    const saved = await db.prepare(`
-      INSERT INTO media_library
-        (id, user_id, type, provider, external_id, media_type, external_source,
-         title, thumbnail_url, stream_url, external_url, release_year, rating,
-         description, trailer_url)
-      VALUES ($1, $2, 'video', 'tmdb', $3, $4, 'tmdb',
-         $5, $6, $7, $8, $9, $10, $11, $12)
-      ON CONFLICT (user_id, provider, external_id) DO NOTHING
-    `).run(
-      randomUUID(),
-      request.user.id,
-      id,
-      mediaType,
-      details.title,
-      details.poster_url,
-      details.trailer_url ?? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
-      `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
-      details.year ? Number(details.year) : null,
-      details.rating,
-      details.overview,
-      details.trailer_url,
-    );
-    const item = await db.prepare(`
-      SELECT id, media_type AS "mediaType", external_id AS "externalId", title,
-        thumbnail_url AS "thumbnailUrl", release_year AS "releaseYear",
-        rating, description, trailer_url AS "trailerUrl"
-      FROM media_library WHERE user_id = $1 AND provider = 'tmdb' AND external_id = $2
-    `).get(request.user.id, id);
+    if (!Array.isArray(details.genre_details)) {
+      const providerDetails = mediaType === 'tv' ? await getTvDetails(id) : await getMovieDetails(id);
+      details = {
+        ...details,
+        genre_details: Array.isArray(providerDetails.genres)
+          ? providerDetails.genres.flatMap(({ id: genreId, name }) => (
+            Number.isInteger(genreId) && typeof name === 'string' ? [{ id: genreId, name }] : []
+          ))
+          : [],
+      };
+    }
+    const { saved, item } = await db.transaction(async (tx) => {
+      const inserted = await tx.prepare(`
+        INSERT INTO media_library
+          (id, user_id, type, provider, external_id, media_type, external_source,
+           title, thumbnail_url, stream_url, external_url, release_year, rating,
+           description, trailer_url)
+        VALUES ($1, $2, 'video', 'tmdb', $3, $4, 'tmdb',
+           $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (user_id, provider, external_id) DO NOTHING
+      `).run(
+        randomUUID(),
+        request.user.id,
+        id,
+        mediaType,
+        details.title,
+        details.poster_url,
+        details.trailer_url ?? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
+        `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
+        details.year ? Number(details.year) : null,
+        details.rating,
+        details.overview,
+        details.trailer_url,
+      );
+      const savedItem = await tx.prepare(`
+        SELECT id, media_type AS "mediaType", external_id AS "externalId", title,
+          thumbnail_url AS "thumbnailUrl", release_year AS "releaseYear",
+          rating, description, trailer_url AS "trailerUrl"
+        FROM media_library WHERE user_id = $1 AND provider = 'tmdb' AND external_id = $2
+      `).get(request.user.id, id);
+      if (!savedItem) throw new Error('The movie was saved but could not be read back.');
+      const insertGenre = tx.prepare(`
+        INSERT INTO media_genres (media_library_id, genre_id, genre_name)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (media_library_id, genre_id) DO UPDATE
+          SET genre_name = excluded.genre_name
+      `);
+      for (const genre of details.genre_details ?? []) {
+        await insertGenre.run(savedItem.id, genre.id, genre.name);
+      }
+      return { saved: inserted, item: savedItem };
+    });
+    const genreIds = (details.genre_details ?? []).slice(0, 3).map((genre) => genre.id);
+    void Promise.all(genreIds.map(async (genreId) => {
+      const cached = await getCachedGenreRecommendations(db, genreId);
+      if (!cached) await refreshGenreRecommendations(db, genreId);
+    })).catch((error) => {
+      console.error('Could not prewarm movie genre recommendations:', error);
+    });
     return response.status(saved.changes ? 201 : 200).json({ item, alreadySaved: !saved.changes });
   } catch (error) {
     return handleProviderError(error, response);

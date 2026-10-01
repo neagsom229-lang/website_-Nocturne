@@ -1,251 +1,283 @@
-import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+import { MediaCard } from '../components/MediaCard';
+import { Shelf } from '../components/Shelf';
+import { WorkspaceShell, useOptionalWorkspacePlayer } from '../components/WorkspaceShell';
+import { Icon } from '../components/Icon';
+import { fetchMovieDetails } from '../lib/moviesApi';
+import {
+  getCommunityPlaylists,
+  getForYou,
+  getNewReleases,
+  getTrending,
+  type NewReleases,
+  type TrendingFeed,
+} from '../lib/discoverApi';
+import type { DiscoveryMedia, PublicPlaylistCard } from '../types';
 
-import { CoverArt } from '../components/CoverArt';
-import { Icon, type IconName } from '../components/Icon';
-import { Rating } from '../components/Rating';
-import { initReveals } from '../lib/reveal';
-import { HERO } from '../data/landing';
+type SectionState<T> = {
+  items: T;
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+};
 
-type Demo = {
-  to: string;
-  name: string;
-  kind: string;
-  tagline: string;
-  bullets: string[];
-  seed: string;
-  icon: IconName;
+function useSection<T>(load: () => Promise<T>, initial: T, enabled = true): SectionState<T> {
+  const [items, setItems] = useState(initial);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!enabled) {
+      setLoading(false);
+      setError(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
+    setError(false);
+    void load().then((result) => {
+      if (active) setItems(result);
+    }).catch((loadError: unknown) => {
+      console.error('Discovery section failed to load:', loadError);
+      if (active) setError(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [load, attempt, enabled]);
+
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { items, loading, error, retry };
 }
 
-const DEMOS: Demo[] = [
-  {
-    to: '/tapes',
-    name: 'Tapes',
-    kind: 'Lo-fi listening app',
-    tagline: 'A dashboard, a swipe onboarding and a now-playing screen for people who listen with one earbud in.',
-    bullets: ['Dashboard feed', 'Swipe onboarding', 'Now playing'],
-    seed: 'lamp',
-    icon: 'headphones',
-  },
-  {
-    to: '/static',
-    name: 'Sleep Static',
-    kind: 'Podcast app',
-    tagline: 'Episode feed, show pages, a listen-later list and a player that remembers where you stopped.',
-    bullets: ['Episode feed', 'Show pages', 'Listen later'],
-    seed: 'static-sincerity',
-    icon: 'mic',
-  },
-  {
-    to: '/diary',
-    name: 'Song Diary',
-    kind: 'Journal',
-    tagline: 'Log the song you had on tonight, how it went, and how many nights in a row you have shown up.',
-    bullets: ['Daily check-in', 'Entries feed', 'Stats'],
-    seed: 'polaroid-wall',
-    icon: 'book',
-  },
-  {
-    to: '/lowlight',
-    name: 'Lowlight',
-    kind: 'Dating app',
-    tagline: 'A swipe deck, matches list, chat and profile — for people who are awake at the same hour as you.',
-    bullets: ['Swipe deck', 'Matches', 'Chat'],
-    seed: 'marlow',
-    icon: 'heart',
-  },
-  {
-    to: '/landing',
-    name: 'Bedroom Pop+',
-    kind: 'Landing page',
-    tagline: 'The nine-block marketing page for the same music app, in the same tokens.',
-    bullets: ['Nav, hero, bento', 'Pricing, FAQ', 'Closing CTA'],
-    seed: 'fairy-light-hours',
-    icon: 'sparkle',
-  },
-];
+const emptyTrending: TrendingFeed = { movies: [], podcasts: [], music: [] };
+const emptyReleases: NewReleases = { movies: [], podcasts: [] };
 
-const SWATCHES = [
-  { name: 'canvas', value: '--tp-canvas', background: 'var(--tp-canvas)' },
-  { name: 'surface', value: '--tp-surf', background: 'var(--tp-surf)' },
-  { name: 'sunken', value: '--tp-surf-2', background: 'var(--tp-surf-2)' },
-  { name: 'accent', value: '--tp-acc', background: 'var(--tp-acc)' },
-  { name: 'accent 2', value: '--tp-acc-2', background: 'var(--tp-acc-2)' },
-  { name: 'ink', value: '--tp-ink', background: 'var(--tp-ink)' },
-  { name: 'mute', value: '--tp-mute', background: 'var(--tp-mute)' },
-  { name: 'line', value: '--tp-line', background: 'var(--tp-line)' },
-];
+function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
+  const player = useOptionalWorkspacePlayer();
+  const navigate = useNavigate();
+  const trending = useSection(getTrending, emptyTrending);
+  const releases = useSection(getNewReleases, emptyReleases);
+  const playlists = useSection(getCommunityPlaylists, [] as PublicPlaylistCard[]);
+  const forYou = useSection(getForYou, emptyTrending, signedIn);
 
-export function Home() {
+  const heroItems = useMemo(() => [
+    ...trending.items.movies,
+    ...releases.items.podcasts,
+    ...trending.items.music,
+  ], [trending.items.movies, releases.items.podcasts, trending.items.music]);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [heroPaused, setHeroPaused] = useState(false);
+  const [manualPaused, setManualPaused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+  );
+
   useEffect(() => {
-    const stop = initReveals();
-    return stop;
+    const mediaQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!mediaQuery) return;
+    const onChange = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
+    mediaQuery.addEventListener?.('change', onChange);
+    return () => mediaQuery.removeEventListener?.('change', onChange);
   }, []);
 
+  useEffect(() => {
+    if (reducedMotion || heroPaused || manualPaused || heroItems.length < 2) return;
+    const timer = window.setInterval(() => {
+      setHeroIndex((index) => (index + 1) % heroItems.length);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [heroItems.length, heroPaused, manualPaused, reducedMotion]);
+  useEffect(() => {
+    if (heroIndex >= heroItems.length) setHeroIndex(0);
+  }, [heroIndex, heroItems.length]);
+
+  const featured = heroItems[heroIndex];
+
+  function changeHero(direction: -1 | 1) {
+    if (!heroItems.length) return;
+    setHeroIndex((index) => (index + direction + heroItems.length) % heroItems.length);
+  }
+
+  const play = useCallback(async (media: DiscoveryMedia) => {
+    if (media.media_type === 'movie') {
+      try {
+        const details = await fetchMovieDetails(media.id);
+        if (!details.trailer_url) {
+          navigate(`/movies/${encodeURIComponent(media.id)}`);
+          return;
+        }
+        player?.playExternalMedia({
+          type: 'video',
+          provider: 'tmdb',
+          mediaType: 'movie',
+          externalId: media.id,
+          title: media.title,
+          artist: null,
+          thumbnailUrl: media.thumbnail_url,
+          streamUrl: details.trailer_url,
+          externalUrl: details.trailer_url,
+        });
+      } catch (error) {
+        console.error('Could not load the featured movie trailer:', error);
+        navigate(`/movies/${encodeURIComponent(media.id)}`);
+      }
+      return;
+    }
+    if (!media.stream_url) return;
+    player?.playExternalMedia({
+      type: media.media_type === 'podcast' ? 'podcast' : 'audio',
+      provider: media.source,
+      mediaType: media.media_type === 'video' ? 'video_podcast' : media.media_type,
+      externalId: media.id,
+      title: media.title,
+      artist: media.artist ?? media.channel ?? null,
+      thumbnailUrl: media.thumbnail_url,
+      streamUrl: media.stream_url,
+      externalUrl: media.external_url ?? null,
+    });
+  }, [navigate, player]);
+
+  const renderMedia = (media: DiscoveryMedia) => (
+    <MediaCard media={media} onPlay={(item) => void play(item)} />
+  );
+
   return (
-    <div className="site tp-web-stage" data-reveal-root>
-      <div className="tp-fx" aria-hidden="true" />
-
-      <nav className="site__nav">
-        <span className="nav__logo">
-          <span className="dot dot--live" aria-hidden="true" />
-          BEDROOM POP
-        </span>
-        <div className="nav__links">
-          <a className="nav__link" href="#demos">
-            The demos
-          </a>
-          <a className="nav__link" href="#tokens">
-            Tokens
-          </a>
-          <Link className="btn btn--primary btn--sm" to="/landing">
-            See the landing page
-          </Link>
-          <Link className="btn btn--ghost btn--sm" to="/auth/login">
-            Log in
-          </Link>
-        </div>
-      </nav>
-
-      <header className="hero shell">
-        <div className="media hero__media" aria-hidden="true">
-          <img src="/images/cover-lamp.png" alt="" />
-          <span className="media__overlay" />
-        </div>
-
-        <div className="plate hero__plate" data-reveal="theme" data-reveal-index="0">
-          <p className="t-eyebrow">Design Studio theme pack · bedroom-pop</p>
-          <h1 className="t-h1" style={{ marginTop: 8 }}>
-            Five working apps, one set of tokens
-          </h1>
-          <p className="t-lead" style={{ marginTop: 10 }}>
-            Fairy lights, polaroids, guitars on unmade beds. Everything below is styled only with
-            <span className="t-mono"> var(--tp-*) </span>
-            — change <span className="t-mono">--tp-h</span> on the root element and the whole pack re-skins.
+    <div className="discovery-home">
+      <header
+        className="discovery-hero"
+        aria-roledescription="carousel"
+        role="region"
+        aria-label="Featured discoveries"
+        data-active-index={heroIndex}
+        onMouseEnter={() => setHeroPaused(true)}
+        onMouseLeave={() => setHeroPaused(false)}
+        onFocus={() => setHeroPaused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setHeroPaused(false);
+        }}
+      >
+        {featured?.thumbnail_url ? (
+          <img className="discovery-hero__backdrop" src={featured.thumbnail_url} alt="" />
+        ) : null}
+        <div className="discovery-hero__content">
+          <p className="discovery-eyebrow">A little something for tonight</p>
+          <h1>{featured?.title ?? 'Find your next favorite.'}</h1>
+          <p className="discovery-hero__description">
+            {featured?.description?.trim().slice(0, 180)
+              || featured?.artist
+              || featured?.channel
+              || (featured?.release_year ? `A ${featured.release_year} release` : null)}
+            {!featured ? 'Movies, podcasts, and music gathered in one quiet place.' : null}
           </p>
-
-          <div className="hero__actions" style={{ marginTop: 16 }}>
-            <a className="btn btn--primary" href="#demos">
-              Open a demo
-              <Icon name="arrow-right" size={17} />
-            </a>
-            <Link className="btn btn--ghost" to="/tapes">
-              <Icon name="play" size={15} />
-              Start with Tapes
+          {featured ? (
+            <button type="button" className="discovery-hero__cta" onClick={() => void play(featured)}>
+              <Icon name="play" size={17} />
+              {featured.media_type === 'movie' ? 'Watch trailer' : 'Play now'}
+            </button>
+          ) : (
+            <Link className="discovery-hero__cta" to="/search">
+              <Icon name="search" size={17} /> Find something
             </Link>
-          </div>
-
-          <div className="hero__stats" style={{ marginTop: 14 }}>
-            <Rating value={HERO.rating.value} count={HERO.rating.count} />
-            <span className="t-small t-mute">Restrained intensity · instrumental serif + outfit</span>
-          </div>
+          )}
+        </div>
+        <div className="discovery-hero__controls">
+          <button type="button" aria-label="Previous slide" disabled={!heroItems.length} onClick={() => changeHero(-1)}>
+            <Icon name="skip-back" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label={manualPaused ? 'Play carousel' : 'Pause carousel'}
+            aria-pressed={manualPaused}
+            onClick={() => setManualPaused((paused) => !paused)}
+          >
+            <Icon name={manualPaused ? 'play' : 'pause'} size={16} />
+          </button>
+          <button type="button" aria-label="Next slide" disabled={!heroItems.length} onClick={() => changeHero(1)}>
+            <Icon name="skip-forward" size={16} />
+          </button>
+          <span className="discovery-hero__position" aria-live="polite">
+            {heroItems.length ? `${heroIndex + 1} / ${heroItems.length}` : 'No. 01'}
+          </span>
         </div>
       </header>
 
-      <div className="strip">
-        <span className="t-eyebrow">Built from</span>
-        <div className="strip__logos">
-          <span className="strip__logo">INSTRUMENT SERIF</span>
-          <span className="strip__logo">OUTFIT</span>
-          <span className="strip__logo">JETBRAINS MONO</span>
-          <span className="strip__logo">OKLCH HUE 20</span>
-          <span className="strip__logo">22PX RADIUS</span>
+      <div className="discovery-home__heading">
+        <div>
+          <p className="discovery-eyebrow">THE NOCTURNE STORE</p>
+          <h2>Good things to press play on.</h2>
         </div>
+        <Link to="/search" className="discovery-home__search"><Icon name="search" size={16} /> Search everything</Link>
       </div>
 
-      <section className="site__section shell" id="demos">
-        <div className="screen-head">
-          <div>
-            <p className="t-eyebrow">The pack</p>
-            <h2 className="screen-title">Pick something to break</h2>
-          </div>
-          <p className="t-small t-mute hide-sm" style={{ maxWidth: 280 }}>
-            Each demo is a separate product with its own routes, data and interactions. All five share
-            the same components and tokens.
-          </p>
-        </div>
-
-        <div className="hub__grid">
-          {DEMOS.map((demo, index) => (
-            <article
-              key={demo.to}
-              className={`card demo-card${index === 4 ? ' demo-card--wide' : ''}`}
-              data-reveal="theme"
-              data-reveal-index={index % 3}
-            >
-              <div className="demo-card__art">
-                <CoverArt
-                  seed={demo.seed}
-                  ratio="banner"
-                  sticker={demo.kind}
-                  label={demo.name}
-                  sublabel={demo.bullets.join(' · ')}
-                />
-              </div>
-
-              <div className="demo-card__head">
-                <div>
-                  <h3 className="demo-card__title">{demo.name}</h3>
-                  <p className="t-small t-mute">{demo.tagline}</p>
-                </div>
-                <span className="iconbtn" aria-hidden="true">
-                  <Icon name={demo.icon} size={20} />
-                </span>
-              </div>
-
-              <ul className="hub__list">
-                {demo.bullets.map((bullet) => (
-                  <li key={bullet} className="row t-small t-mute">
-                    <Icon name="check" size={14} />
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-
-              <div className="demo-card__foot">
-                <span className="t-mono t-mute">{demo.to}</span>
-                <Link className="btn btn--ghost btn--sm" to={demo.to}>
-                  Open
-                  <Icon name="arrow-up-right" size={15} />
-                </Link>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="site__section shell" id="tokens" data-reveal="theme">
-        <p className="t-eyebrow">Tokens</p>
-        <h2 className="screen-title" style={{ marginBottom: 10 }}>
-          Nothing here is a raw value
-        </h2>
-        <p className="t-lead" style={{ maxWidth: 640, marginBottom: 18 }}>
-          Every colour, radius, shadow, font and duration in the pack resolves to a custom property on the
-          themed root element.
-        </p>
-
-        <div className="tokens">
-          {SWATCHES.map((swatch) => (
-            <div className="swatch" key={swatch.name}>
-              <span className="swatch__chip" style={{ background: swatch.background }} />
-              <span className="swatch__name">{swatch.name}</span>
-              <span className="swatch__value">{swatch.value}</span>
+      {signedIn ? (
+        <HomeShelf title="For You" loading={forYou.loading} error={forYou.error} retry={forYou.retry} items={[
+          ...forYou.items.movies,
+          ...forYou.items.podcasts,
+          ...forYou.items.music,
+        ]} renderCard={renderMedia} seeAllHref="/library" />
+      ) : null}
+      <HomeShelf title="Trending Movies" loading={trending.loading} error={trending.error} retry={trending.retry}
+        items={trending.items.movies} renderCard={renderMedia} seeAllHref="/movies" />
+      <HomeShelf title="New Podcasts" loading={releases.loading} error={releases.error} retry={releases.retry}
+        items={releases.items.podcasts} renderCard={renderMedia} seeAllHref="/static" />
+      <HomeShelf title="Fresh Music for You" loading={trending.loading} error={trending.error} retry={trending.retry}
+        items={trending.items.music} renderCard={renderMedia} seeAllHref="/tapes/discover" />
+      <HomeShelf title="Community Playlists" loading={playlists.loading} error={playlists.error} retry={playlists.retry}
+        items={playlists.items} seeAllHref="/playlists?tab=discover" renderCard={(playlist) => (
+          <Link className="discovery-playlist-card" to={`/playlists/${playlist.id}`}>
+            <div className="discovery-playlist-card__cover">
+              {playlist.coverUrl
+                ? <img src={playlist.coverUrl} alt="" loading="lazy" />
+                : <span aria-hidden="true" />}
             </div>
-          ))}
+            <strong>{playlist.name}</strong>
+            <small>{playlist.itemCount} tracks · {playlist.ownerDisplayName}</small>
+          </Link>
+        )} />
+    </div>
+  );
+}
+
+function HomeShelf<T>({
+  title,
+  items,
+  renderCard,
+  loading,
+  error,
+  retry,
+  seeAllHref,
+}: {
+  title: string;
+  items: T[];
+  renderCard: (item: T) => ReactNode;
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+  seeAllHref?: string;
+}) {
+  if (error) {
+    return (
+      <section className="discovery-shelf" aria-label={title}>
+        <div className="discovery-shelf__heading"><h2>{title}</h2></div>
+        <div className="discovery-retry" role="status">
+          <span>Couldn't load this section.</span>
+          <button type="button" onClick={retry}>Retry</button>
         </div>
       </section>
+    );
+  }
+  return <Shelf title={title} items={items} renderCard={renderCard} loading={loading} seeAllHref={seeAllHref} />;
+}
 
-      <div className="shell">
-        <footer className="footer">
-          <span>BEDROOM POP — a Design Studio theme demo.</span>
-          <span className="footer__links">
-            <a href="#demos">Demos</a>
-            <a href="#tokens">Tokens</a>
-            <Link to="/landing">Landing page</Link>
-          </span>
-          <span className="t-mono">data-theme="bedroom-pop"</span>
-        </footer>
-      </div>
-    </div>
+export function Home() {
+  const { user } = useAuth();
+  return (
+    <WorkspaceShell>
+      <DiscoveryHome signedIn={Boolean(user)} />
+    </WorkspaceShell>
   );
 }

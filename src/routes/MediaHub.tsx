@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
+import { MediaCard as DiscoveryMediaCard } from '../components/MediaCard';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import type { LibraryMediaType, MediaItem, MediaType } from '../lib/mediaApi';
 import { deleteLibraryItem, fetchMediaLibrary, saveMedia, searchMedia, searchVideoPodcasts } from '../lib/mediaApi';
 import { saveMovie, searchMovies, type MovieSummary } from '../lib/moviesApi';
+import type { DiscoveryMedia } from '../types';
 
 const MEDIA_TABS: { type: MediaType | 'movie'; label: string }[] = [
   { type: 'audio', label: 'Music' },
@@ -42,7 +44,7 @@ function MediaSkeletons() {
   );
 }
 
-function MediaCard({
+function LibraryMediaCard({
   item,
   saved,
   saving,
@@ -137,6 +139,7 @@ export function SearchResultsPage() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [savingId, setSavingId] = useState('');
   const { playExternalMedia } = useWorkspacePlayer();
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -208,6 +211,38 @@ export function SearchResultsPage() {
     }
   }
 
+  async function saveMovieResult(movie: MovieSummary) {
+    const key = `tmdb:${movie.tmdb_id}`;
+    setSavingId(key);
+    setError('');
+    try {
+      await saveMovie(movie.tmdb_id);
+      setSavedIds((ids) => ids.includes(key) ? ids : [...ids, key]);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save this movie.');
+    } finally {
+      setSavingId('');
+    }
+  }
+
+  function toDiscoveryMedia(item: MediaItem): DiscoveryMedia {
+    return {
+      id: item.externalId,
+      title: item.title,
+      thumbnail_url: item.thumbnailUrl,
+      media_type: item.mediaType === 'movie' || item.mediaType === 'tv'
+        ? 'movie'
+        : item.mediaType === 'video_podcast' || item.type === 'video'
+          ? 'video'
+          : item.mediaType ?? (item.type === 'audio' ? 'music' : 'podcast'),
+      source: item.provider,
+      stream_url: item.streamUrl,
+      external_url: item.externalUrl,
+      artist: item.artist,
+      duration_seconds: item.durationSeconds,
+    };
+  }
+
   return (
     <section className="media-page">
       <header className="media-page__heading">
@@ -236,22 +271,22 @@ export function SearchResultsPage() {
           movieResults.length ? (
             <div className="media-grid">
               {movieResults.map((movie) => (
-                <article className="media-card movie-card" key={movie.tmdb_id}>
-                  <Link to={`/movies/${movie.tmdb_id}`} className="media-card__art" aria-label={`View ${movie.title}`}>
-                    {movie.poster_url ? <img src={movie.poster_url} alt="" loading="lazy" /> : <span className="media-card__fallback"><Icon name="play-circle" size={28} /></span>}
-                    <span className="media-card__type">MOVIE</span>
-                    {movie.rating !== null ? <span className="movie-card__rating">★ {movie.rating.toFixed(1)}</span> : null}
-                  </Link>
-                  <div className="media-card__body">
-                    <h2><Link to={`/movies/${movie.tmdb_id}`}>{movie.title}</Link></h2>
-                    <p>{movie.year ?? 'Release date unavailable'}</p>
-                    <AddToPlaylistButton
-                      label={`Add ${movie.title} to a playlist`}
-                      ensureMediaSaved={() => saveMovie(movie.tmdb_id)}
-                    />
-                    <Link className="media-card__play-link" to={`/movies/${movie.tmdb_id}`}>View details <Icon name="arrow-right" size={14} /></Link>
-                  </div>
-                </article>
+                <DiscoveryMediaCard
+                  key={movie.tmdb_id}
+                  media={{
+                    id: String(movie.tmdb_id),
+                    title: movie.title,
+                    thumbnail_url: movie.poster_url,
+                    media_type: 'movie',
+                    source: 'tmdb',
+                    release_year: movie.year,
+                    rating: movie.rating,
+                  }}
+                  onPlay={(item) => navigate(`/movies/${encodeURIComponent(item.id)}`)}
+                  onSave={() => void saveMovieResult(movie)}
+                  saved={savedIds.includes(`tmdb:${movie.tmdb_id}`)}
+                  saving={savingId === `tmdb:${movie.tmdb_id}`}
+                />
               ))}
             </div>
           ) : !error ? (
@@ -261,9 +296,9 @@ export function SearchResultsPage() {
           results.length ? (
             <div className="media-grid">
               {results.map((item) => (
-                <MediaCard
+                <DiscoveryMediaCard
                   key={`${item.provider}-${item.externalId}`}
-                  item={item}
+                  media={toDiscoveryMedia(item)}
                   saved={savedIds.includes(`${item.provider}:${item.externalId}`)}
                   saving={savingId === `${item.provider}:${item.externalId}`}
                   onPlay={() => playExternalMedia(item)}
@@ -376,7 +411,7 @@ export function MusicLibraryPage() {
       {loading ? <MediaSkeletons /> : filteredItems.length ? (
         <div className="media-grid">
           {filteredItems.map((item) => (
-            <MediaCard
+            <LibraryMediaCard
               key={item.id}
               item={item}
               onPlay={() => playExternalMedia(item)}

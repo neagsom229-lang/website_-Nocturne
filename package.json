@@ -9,6 +9,7 @@
     "dev:web": "vite",
     "dev:api": "node backend/server.js",
     "start": "node backend/server.js",
+    "backfill:movie-genres": "node backend/scripts/backfill-movie-genres.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

@@ -17,6 +17,7 @@ import './styles/landing.css';
 import './styles/auth.css';
 import './styles/workspace.css';
 import './styles/playlists.css';
+import './styles/discovery.css';
 
 import { App } from './App';
 import { ToastProvider } from './components/Toast';

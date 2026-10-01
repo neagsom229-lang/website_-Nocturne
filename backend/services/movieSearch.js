@@ -41,6 +41,16 @@ export function getMovieDetails(id) {
   return requestTmdb(`/movie/${encodeURIComponent(id)}`, { append_to_response: 'credits' });
 }
 
+export function getMoviesByGenre(genreId) {
+  if (!Number.isInteger(genreId) || genreId < 1) {
+    throw new MovieSearchError('genreId must be a positive integer.', 400);
+  }
+  return requestTmdb('/discover/movie', {
+    with_genres: String(genreId),
+    sort_by: 'popularity.desc',
+  });
+}
+
 export function getTvDetails(id) {
   return requestTmdb(`/tv/${encodeURIComponent(id)}`, { append_to_response: 'credits' });
 }
@@ -54,6 +64,10 @@ export function getTrendingMovies(timeWindow = 'week') {
 
 export function getUpcomingMovies() {
   return requestTmdb('/movie/upcoming');
+}
+
+export function getNowPlayingMovies() {
+  return requestTmdb('/movie/now_playing');
 }
 
 export function getMovieVideos(id) {
@@ -88,6 +102,12 @@ export function normalizeMovieDetails(movie, videos) {
         ? movie.episode_run_time[0]
         : null,
     genres: Array.isArray(movie.genres) ? movie.genres.map(({ name }) => name) : [],
+    genre_details: Array.isArray(movie.genres)
+      ? movie.genres.flatMap(({ id, name }) => Number.isInteger(id) && typeof name === 'string' ? [{ id, name }] : [])
+      : [],
+    genre_ids: Array.isArray(movie.genres)
+      ? movie.genres.flatMap(({ id }) => Number.isInteger(id) ? [id] : [])
+      : [],
     cast: Array.isArray(movie.credits?.cast)
       ? movie.credits.cast.slice(0, 12).map(({ id, name, character }) => ({ id, name, character }))
       : [],

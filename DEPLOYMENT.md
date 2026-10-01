@@ -72,6 +72,23 @@ not addable to playlists. External tracks, podcast episodes, and movies can be
 added from their search/library cards; they are saved to the listener's library
 first when needed.
 
+## Discovery
+
+The home discovery shelves combine public TMDB, iTunes, and Audius results;
+TMDB-powered movie search and recommendations require `TMDB_API_KEY`. Discovery
+responses are cached in PostgreSQL for 15 minutes (30 minutes for new releases).
+The Continue Watching / Listening shelf is not shown yet because the current
+media library schema does not record `last_played_at`; playback history can be
+added in a later phase. Personalization uses saved artists and media types, and
+uses stored genre metadata for TMDB movies. To add genre storage to an existing
+database, run `migrations/011_movie_genres.sql` in Supabase SQL Editor, then
+configure `DATABASE_URL` and `TMDB_API_KEY` in your local shell and run
+`npm run backfill:movie-genres`. New saved movies are assigned genres during
+the save request. The backfill can be re-run safely; it only processes movies
+without stored genre rows. `/api/discover/for-you` uses cached genre
+recommendations where available and falls back to trending without making
+per-movie TMDB detail requests.
+
 ## Required Render Environment Variables
 
 The Blueprint configures `NODE_ENV=production` and `TRUST_PROXY=1`, and

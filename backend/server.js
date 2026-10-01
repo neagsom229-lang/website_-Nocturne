@@ -16,6 +16,7 @@ import musicRouter from './routes/music.js';
 import moviesRouter from './routes/movies.js';
 import podcastsRouter from './routes/podcasts.js';
 import { createPlaylistsRouter } from './routes/playlists.js';
+import { createDiscoverRouter } from './routes/discover.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -343,6 +344,7 @@ app.post('/api/auth/logout', async (request, response) => {
   response.status(204).end();
 });
 
+app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
 app.use('/api', authenticate);
 app.use('/api/music', musicRouter);
 app.use('/api/movies', moviesRouter);

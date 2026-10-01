@@ -32,7 +32,7 @@ test('movie details select a YouTube trailer and include credits', () => {
     first_air_date: '2024-08-09',
     vote_average: 7.6,
     episode_run_time: [45],
-    genres: [{ name: 'Drama' }],
+    genres: [{ id: 18, name: 'Drama' }],
     credits: { cast: [{ id: 1, name: 'A. Actor', character: 'The Listener' }] },
   }, [
     { site: 'Vimeo', type: 'Trailer', key: 'ignore' },
@@ -41,6 +41,8 @@ test('movie details select a YouTube trailer and include credits', () => {
   ]);
   assert.equal(details.title, 'Quiet City');
   assert.equal(details.year, '2024');
+  assert.deepEqual(details.genre_details, [{ id: 18, name: 'Drama' }]);
+  assert.deepEqual(details.genre_ids, [18]);
   assert.equal(details.runtime, 45);
   assert.deepEqual(details.genres, ['Drama']);
   assert.deepEqual(details.cast, [{ id: 1, name: 'A. Actor', character: 'The Listener' }]);

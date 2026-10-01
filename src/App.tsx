@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { Home } from './routes/Home';
 
+const Home = lazy(() => import('./routes/Home').then((module) => ({ default: module.Home })));
 const AuthPage = lazy(() => import('./auth/AuthRoutes').then((module) => ({ default: module.AuthPage })));
 const ProtectedRoutes = lazy(() => import('./auth/AuthRoutes').then((module) => ({ default: module.ProtectedRoutes })));
 
