@@ -22,6 +22,8 @@ const DatingMyProfile = lazy(() => import('./routes/lowlight/DatingApp').then((m
 const DatingPersonPage = lazy(() => import('./routes/lowlight/DatingApp').then((module) => ({ default: module.DatingPersonPage })));
 const SearchResultsPage = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.SearchResultsPage })));
 const MusicLibraryPage = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.MusicLibraryPage })));
+const MoviesPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MoviesPage })));
+const MovieDetailPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MovieDetailPage })));
 const WorkspacePlaceholder = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.WorkspacePlaceholder })));
 
 function RouteLoading() {
@@ -47,6 +49,8 @@ export function App() {
           <Route path="/tapes/now-playing" element={<MusicNowPlaying />} />
           <Route path="/search" element={<SearchResultsPage />} />
           <Route path="/library" element={<MusicLibraryPage />} />
+          <Route path="/movies" element={<MoviesPage />} />
+          <Route path="/movies/:id" element={<MovieDetailPage />} />
           <Route path="/mood" element={<DiaryHome />} />
           <Route path="/trending" element={<WorkspacePlaceholder title="Trending, softly." icon="trend-up" body="A calmer corner for the songs and stories people are finding tonight." />} />
           <Route path="/chat" element={<WorkspacePlaceholder title="A little room to talk." icon="message" body="Your conversations will find a home here. For now, start with the people you’ve matched with." />} />

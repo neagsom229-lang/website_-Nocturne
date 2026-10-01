@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS media_library (
   type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
   provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes', 'tmdb', 'omdb', 'deezer')),
   external_id TEXT NOT NULL,
-  media_type TEXT CHECK (media_type IN ('music', 'podcast', 'movie', 'video_podcast')),
+  media_type TEXT CHECK (media_type IN ('music', 'podcast', 'movie', 'tv', 'video_podcast')),
   external_source TEXT CHECK (external_source IN ('tmdb', 'omdb', 'itunes', 'deezer')),
   title TEXT NOT NULL,
   artist TEXT,

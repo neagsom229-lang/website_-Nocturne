@@ -57,6 +57,7 @@ const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
     items: [
       { label: 'Home / Dashboard', to: '/tapes', icon: 'home', end: true },
       { label: 'Search Hub', to: '/search', icon: 'search' },
+      { label: 'Movies', to: '/movies', icon: 'play-circle' },
       { label: 'Trending', to: '/trending', icon: 'trend-up' },
     ],
   },

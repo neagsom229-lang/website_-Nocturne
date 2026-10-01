@@ -5,10 +5,12 @@ import { Icon } from '../components/Icon';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import type { MediaItem, MediaType } from '../lib/mediaApi';
 import { deleteLibraryItem, fetchMediaLibrary, saveMedia, searchMedia } from '../lib/mediaApi';
+import { searchMovies, type MovieSummary } from '../lib/moviesApi';
 
-const MEDIA_TABS: { type: MediaType; label: string }[] = [
+const MEDIA_TABS: { type: MediaType | 'movie'; label: string }[] = [
   { type: 'video', label: 'Music Videos' },
   { type: 'podcast', label: 'Podcasts' },
+  { type: 'movie', label: 'Movies' },
   { type: 'audio', label: 'Audio Tracks' },
 ];
 
@@ -95,10 +97,11 @@ export function SearchResultsPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q')?.trim() ?? '';
   const requestedType = params.get('type');
-  const activeType: MediaType = MEDIA_TABS.some((tab) => tab.type === requestedType)
-    ? requestedType as MediaType
+  const activeType: MediaType | 'movie' = MEDIA_TABS.some((tab) => tab.type === requestedType)
+    ? requestedType as MediaType | 'movie'
     : 'video';
   const [results, setResults] = useState<MediaItem[]>([]);
+  const [movieResults, setMovieResults] = useState<MovieSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -109,12 +112,24 @@ export function SearchResultsPage() {
     let active = true;
     if (!query) {
       setResults([]);
+      setMovieResults([]);
       setLoading(false);
       setError('');
       return () => { active = false; };
     }
     setLoading(true);
     setError('');
+    if (activeType === 'movie') {
+      setResults([]);
+      void searchMovies(query)
+        .then((items) => { if (active) setMovieResults(items); })
+        .catch((searchError: unknown) => {
+          if (active) setError(searchError instanceof Error ? searchError.message : 'Movie search could not be completed.');
+        })
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
+    }
+    setMovieResults([]);
     void searchMedia(query, activeType)
       .then((items) => { if (active) setResults(items); })
       .catch((searchError: unknown) => {
@@ -124,7 +139,7 @@ export function SearchResultsPage() {
     return () => { active = false; };
   }, [query, activeType]);
 
-  function selectType(type: MediaType) {
+  function selectType(type: MediaType | 'movie') {
     setParams((current) => {
       const next = new URLSearchParams(current);
       next.set('type', type);
@@ -170,26 +185,49 @@ export function SearchResultsPage() {
       {query ? <p className="media-query">Results for <strong>“{query}”</strong></p> : null}
       {error ? <div className="music-error" role="alert">{error}</div> : null}
       {loading ? <MediaSkeletons /> : query ? (
-        results.length ? (
-          <div className="media-grid">
-            {results.map((item) => (
-              <MediaCard
-                key={`${item.provider}-${item.externalId}`}
-                item={item}
-                saved={savedIds.includes(`${item.provider}:${item.externalId}`)}
-                saving={savingId === `${item.provider}:${item.externalId}`}
-                onPlay={() => playExternalMedia(item)}
-                onSave={() => void save(item)}
-              />
-            ))}
-          </div>
-        ) : !error ? (
-          <EmptyState
-            icon="search"
-            title="Nothing came through this time."
-            body="Try a different search, or switch the kind of media you’re looking for."
-          />
-        ) : null
+        activeType === 'movie' ? (
+          movieResults.length ? (
+            <div className="media-grid">
+              {movieResults.map((movie) => (
+                <article className="media-card movie-card" key={movie.tmdb_id}>
+                  <Link to={`/movies/${movie.tmdb_id}`} className="media-card__art" aria-label={`View ${movie.title}`}>
+                    {movie.poster_url ? <img src={movie.poster_url} alt="" loading="lazy" /> : <span className="media-card__fallback"><Icon name="play-circle" size={28} /></span>}
+                    <span className="media-card__type">MOVIE</span>
+                    {movie.rating !== null ? <span className="movie-card__rating">★ {movie.rating.toFixed(1)}</span> : null}
+                  </Link>
+                  <div className="media-card__body">
+                    <h2><Link to={`/movies/${movie.tmdb_id}`}>{movie.title}</Link></h2>
+                    <p>{movie.year ?? 'Release date unavailable'}</p>
+                    <Link className="media-card__play-link" to={`/movies/${movie.tmdb_id}`}>View details <Icon name="arrow-right" size={14} /></Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : !error ? (
+            <EmptyState icon="search" title="No movies found." body="Try another title or switch to a different media type." />
+          ) : null
+        ) : (
+          results.length ? (
+            <div className="media-grid">
+              {results.map((item) => (
+                <MediaCard
+                  key={`${item.provider}-${item.externalId}`}
+                  item={item}
+                  saved={savedIds.includes(`${item.provider}:${item.externalId}`)}
+                  saving={savingId === `${item.provider}:${item.externalId}`}
+                  onPlay={() => playExternalMedia(item)}
+                  onSave={() => void save(item)}
+                />
+              ))}
+            </div>
+          ) : !error ? (
+            <EmptyState
+              icon="search"
+              title="Nothing came through this time."
+              body="Try a different search, or switch the kind of media you’re looking for."
+            />
+          ) : null
+        )
       ) : (
         <EmptyState
           icon="headphones"
