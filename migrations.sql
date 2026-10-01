@@ -117,6 +117,31 @@ CREATE TABLE IF NOT EXISTS media_library (
 CREATE INDEX IF NOT EXISTS media_library_user_created
   ON media_library (user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS playlists (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
+  description TEXT CHECK (length(description) <= 500),
+  is_public BOOLEAN NOT NULL DEFAULT false,
+  cover_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS playlists_user_id_idx ON playlists(user_id);
+CREATE INDEX IF NOT EXISTS playlists_public_idx ON playlists(is_public) WHERE is_public = true;
+
+CREATE TABLE IF NOT EXISTS playlist_items (
+  id SERIAL PRIMARY KEY,
+  playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  media_library_id TEXT NOT NULL REFERENCES media_library(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (playlist_id, media_library_id)
+);
+
+CREATE INDEX IF NOT EXISTS playlist_items_playlist_id_idx ON playlist_items (playlist_id, position);
+
 CREATE TABLE IF NOT EXISTS search_cache (
   query TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio', 'movie', 'music', 'video_podcast')),

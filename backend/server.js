@@ -15,6 +15,7 @@ import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
 import musicRouter from './routes/music.js';
 import moviesRouter from './routes/movies.js';
 import podcastsRouter from './routes/podcasts.js';
+import { createPlaylistsRouter } from './routes/playlists.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -66,8 +67,14 @@ async function issueSession(response, user) {
 }
 
 async function authenticate(request, response, next) {
+  const publicPlaylistRead = request.method === 'GET' && (
+    request.path === '/playlists/public' || /^\/playlists\/\d+$/.test(request.path)
+  );
   const token = request.cookies[sessionCookie];
-  if (!token) return response.status(401).json({ error: 'Please log in to continue' });
+  if (!token) {
+    if (publicPlaylistRead) return next();
+    return response.status(401).json({ error: 'Please log in to continue' });
+  }
   let claims;
   try {
     claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
@@ -340,6 +347,7 @@ app.use('/api', authenticate);
 app.use('/api/music', musicRouter);
 app.use('/api/movies', moviesRouter);
 app.use('/api/podcasts', podcastsRouter);
+app.use('/api/playlists', createPlaylistsRouter({ database: db, authenticate }));
 
 app.get('/api/search', searchLimiter, async (request, response, next) => {
   const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
