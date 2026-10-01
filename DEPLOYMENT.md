@@ -67,6 +67,11 @@ no additional API key or deployment configuration. iTunes exposes video URLs
 for relatively few podcast episodes, so searches may return few or no results;
 this is a limitation of the catalog metadata, not a deployment error.
 
+Built-in demo mix tracks are not stored in `media_library` and therefore are
+not addable to playlists. External tracks, podcast episodes, and movies can be
+added from their search/library cards; they are saved to the listener's library
+first when needed.
+
 ## Required Render Environment Variables
 
 The Blueprint configures `NODE_ENV=production` and `TRUST_PROXY=1`, and
@@ -90,7 +95,8 @@ least 32 characters and keep it private.
 
 For an existing database, apply the applicable incremental SQL files from
 `migrations/` in order. `migrations/009_movie_tv.sql` adds the movie and TV
-library metadata constraints required by the movie routes. Fresh databases can
+library metadata constraints required by the movie routes, and
+`migrations/010_playlists.sql` creates playlist storage. Fresh databases can
 use the complete `migrations.sql` schema.
 
 ## Troubleshooting

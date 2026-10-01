@@ -16,6 +16,7 @@ import './styles/dating.css';
 import './styles/landing.css';
 import './styles/auth.css';
 import './styles/workspace.css';
+import './styles/playlists.css';
 
 import { App } from './App';
 import { ToastProvider } from './components/Toast';

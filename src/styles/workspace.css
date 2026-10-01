@@ -23,6 +23,19 @@
   transition: margin-left var(--tp-dur) var(--tp-ease);
 }
 
+.workspace--anonymous .workspace-main {
+  margin-left: 0;
+}
+
+.workspace--anonymous .workspace-content {
+  min-height: 100dvh;
+  padding-top: 28px;
+}
+
+.workspace--anonymous .workspace-player {
+  left: 0;
+}
+
 .workspace-sidebar {
   position: fixed;
   inset: 0 auto 0 0;

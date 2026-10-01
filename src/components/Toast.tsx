@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setMessage({ text, id });
     window.setTimeout(() => {
       setMessage((current) => (current?.id === id ? null : current));
-    }, 2600);
+    }, 3000);
   }, []);
 
   const api = useMemo(() => ({ push }), [push]);

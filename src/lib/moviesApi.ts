@@ -55,9 +55,10 @@ export async function fetchMovieDetails(id: string): Promise<MovieDetails> {
   return response.movie;
 }
 
-export async function saveMovie(tmdbId: number): Promise<void> {
-  await request('/api/movies/save', {
+export async function saveMovie(tmdbId: number): Promise<string> {
+  const result = await request<{ item: { id: string } }>('/api/movies/save', {
     method: 'POST',
     body: JSON.stringify({ tmdb_id: tmdbId, media_type: 'movie' }),
   });
+  return result.item.id;
 }

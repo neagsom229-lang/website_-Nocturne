@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import type { LibraryMediaType, MediaItem, MediaType } from '../lib/mediaApi';
 import { deleteLibraryItem, fetchMediaLibrary, saveMedia, searchMedia, searchVideoPodcasts } from '../lib/mediaApi';
-import { searchMovies, type MovieSummary } from '../lib/moviesApi';
+import { saveMovie, searchMovies, type MovieSummary } from '../lib/moviesApi';
 
 const MEDIA_TABS: { type: MediaType | 'movie'; label: string }[] = [
   { type: 'audio', label: 'Music' },
@@ -93,6 +94,15 @@ function MediaCard({
               {saved ? 'Saved' : saving ? 'Saving…' : 'Save to Library'}
             </button>
           ) : null}
+          <AddToPlaylistButton
+            mediaLibraryId={item.id}
+            label={`Add ${item.title} to a playlist`}
+            ensureMediaSaved={async () => {
+              const result = await saveMedia(item);
+              if (!result.item.id) throw new Error('The item was saved, but its library ID was not returned.');
+              return result.item.id;
+            }}
+          />
           {onDelete ? (
             <button className="btn btn--ghost btn--sm media-card__remove" type="button" onClick={onDelete} disabled={deleting}>
               <Icon name="trash" size={15} /> Remove
@@ -235,6 +245,10 @@ export function SearchResultsPage() {
                   <div className="media-card__body">
                     <h2><Link to={`/movies/${movie.tmdb_id}`}>{movie.title}</Link></h2>
                     <p>{movie.year ?? 'Release date unavailable'}</p>
+                    <AddToPlaylistButton
+                      label={`Add ${movie.title} to a playlist`}
+                      ensureMediaSaved={() => saveMovie(movie.tmdb_id)}
+                    />
                     <Link className="media-card__play-link" to={`/movies/${movie.tmdb_id}`}>View details <Icon name="arrow-right" size={14} /></Link>
                   </div>
                 </article>

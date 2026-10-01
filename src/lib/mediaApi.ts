@@ -1,5 +1,5 @@
 export type MediaType = 'video' | 'podcast' | 'audio' | 'video_podcast';
-export type MediaProvider = 'youtube' | 'itunes' | 'audius';
+export type MediaProvider = 'youtube' | 'itunes' | 'tmdb' | 'omdb' | 'deezer' | 'audius';
 export type LibraryMediaType = 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
 
 export type MediaItem = {

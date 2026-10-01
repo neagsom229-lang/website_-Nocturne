@@ -132,9 +132,11 @@ export function createPlaylistsRouter({ database, authenticate }) {
 
     const items = await database.prepare(`
       SELECT pi.id, pi.media_library_id AS "mediaLibraryId", pi.position,
-        pi.added_at AS "addedAt", m.type, m.media_type AS "mediaType",
+        pi.added_at AS "addedAt", m.provider, m.external_id AS "externalId",
+        m.external_url AS "externalUrl", m.type, m.media_type AS "mediaType",
         m.title, m.artist, m.thumbnail_url AS "thumbnailUrl",
-        m.stream_url AS "streamUrl", m.duration_seconds AS "durationSeconds"
+        m.stream_url AS "streamUrl", m.trailer_url AS "trailerUrl",
+        m.duration_seconds AS "durationSeconds"
       FROM playlist_items pi
       JOIN media_library m ON m.id = pi.media_library_id
       WHERE pi.playlist_id = $1

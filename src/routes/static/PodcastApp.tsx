@@ -4,8 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppShell } from '../../components/AppShell';
 import { CoverArt } from '../../components/CoverArt';
 import { Icon } from '../../components/Icon';
+import { AddToPlaylistButton } from '../../components/AddToPlaylistButton';
 import { PageBar } from '../../components/PageBar';
 import { TabBar } from '../../components/TabBar';
+import { saveMedia } from '../../lib/mediaApi';
 import type {
   PodcastEpisode,
   PodcastPlayerState,
@@ -92,6 +94,25 @@ function EpisodeCard({
         <p className="podcast-episode__summary">{episode.summary}</p>
         <div className="podcast-episode__meta">
           <span className="t-mono">{formatClock(episode.seconds)}</span>
+          <AddToPlaylistButton
+            label={`Add ${episode.title} to a playlist`}
+            ensureMediaSaved={async () => {
+              const result = await saveMedia({
+                type: 'podcast',
+                provider: 'itunes',
+                externalId: episode.id,
+                title: episode.title,
+                artist: episode.showTitle,
+                thumbnailUrl: null,
+                streamUrl: episode.audioUrl,
+                externalUrl: null,
+                mediaType: 'podcast',
+                durationSeconds: episode.seconds,
+              });
+              if (!result.item.id) throw new Error('The episode was saved, but its library ID was not returned.');
+              return result.item.id;
+            }}
+          />
           <button
             type="button"
             className={`podcast-save${episode.isSaved ? ' is-saved' : ''}`}
@@ -377,6 +398,25 @@ export function PodcastEpisodePage() {
             <button type="button" className="btn btn--ghost" aria-pressed={episode.isSaved} onClick={() => void onToggleSave()}>
               <Icon name={episode.isSaved ? 'bookmark-filled' : 'bookmark'} size={16} /> {episode.isSaved ? 'Saved for later' : 'Listen later'}
             </button>
+            <AddToPlaylistButton
+              label={`Add ${episode.title} to a playlist`}
+              ensureMediaSaved={async () => {
+                const result = await saveMedia({
+                  type: 'podcast',
+                  provider: 'itunes',
+                  externalId: episode.id,
+                  title: episode.title,
+                  artist: episode.showTitle,
+                  thumbnailUrl: null,
+                  streamUrl: episode.audioUrl,
+                  externalUrl: null,
+                  mediaType: 'podcast',
+                  durationSeconds: episode.seconds,
+                });
+                if (!result.item.id) throw new Error('The episode was saved, but its library ID was not returned.');
+                return result.item.id;
+              }}
+            />
           </div>
         </article>
       ) : !error ? <p className="t-small t-mute">Opening the episode…</p> : null}

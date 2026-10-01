@@ -16,9 +16,11 @@ import type YouTubePlayerInstance from 'react-player/youtube';
 import type { OnProgressProps } from 'react-player/base';
 import { useAuth } from '../auth/AuthContext';
 import { CoverArt } from './CoverArt';
+import { AddToPlaylistButton } from './AddToPlaylistButton';
 import { Icon, type IconName } from './Icon';
 import type { Mix, Track } from '../data/types';
 import { formatClock } from '../lib/hooks';
+import { saveMedia } from '../lib/mediaApi';
 import {
   fetchMixes,
   fetchNowPlaying,
@@ -34,7 +36,7 @@ const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-
 type ExternalMedia = {
   id?: string;
   type: 'video' | 'podcast' | 'audio';
-  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius';
+  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius' | 'tmdb' | 'omdb' | 'deezer';
   mediaType?: 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
   externalId: string;
   title: string;
@@ -50,6 +52,7 @@ type NavigationItem = {
   to: string;
   icon: IconName;
   end?: boolean;
+  queryTab?: 'mine' | 'discover';
 };
 
 const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
@@ -59,6 +62,7 @@ const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
       { label: 'Home / Dashboard', to: '/tapes', icon: 'home', end: true },
       { label: 'Search Hub', to: '/search', icon: 'search' },
       { label: 'Movies', to: '/movies', icon: 'play-circle' },
+      { label: 'Discover Playlists', to: '/playlists?tab=discover', icon: 'library', end: true, queryTab: 'discover' },
       { label: 'Trending', to: '/trending', icon: 'trend-up' },
     ],
   },
@@ -66,6 +70,7 @@ const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
     label: 'My Media',
     items: [
       { label: 'Music Library', to: '/library', icon: 'library' },
+      { label: 'Playlists', to: '/playlists', icon: 'library', end: true, queryTab: 'mine' },
       { label: 'Podcast Subscriptions', to: '/static/shows', icon: 'mic' },
       { label: 'Watch Later', to: '/static/saved', icon: 'bookmark' },
     ],
@@ -100,6 +105,8 @@ type WorkspacePlayer = {
   mixes: Mix[];
   nowPlaying: NowPlaying | null;
   externalMedia: ExternalMedia | null;
+  externalQueue: ExternalMedia[];
+  externalQueueIndex: number;
   externalPlaying: boolean;
   buffering: boolean;
   progress: number;
@@ -112,6 +119,8 @@ type WorkspacePlayer = {
   setExternalPlaying: (playing: boolean) => void;
   selectTrack: (mix: Mix, track: Track) => Promise<void>;
   playExternalMedia: (media: ExternalMedia) => void;
+  playExternalQueue: (media: ExternalMedia[]) => void;
+  ensureExternalMediaSaved: () => Promise<string>;
   toggle: () => Promise<void>;
   skip: (direction: -1 | 1) => Promise<void>;
   seek: (seconds: number) => void;
@@ -127,11 +136,19 @@ export function useWorkspacePlayer() {
   return player;
 }
 
+export function useOptionalWorkspacePlayer() {
+  return useContext(PlayerContext);
+}
+
 function PlayerDock() {
+  const { user } = useAuth();
   const {
     nowPlaying,
     externalMedia,
+    externalQueue,
+    externalQueueIndex,
     externalPlaying,
+    ensureExternalMediaSaved,
     buffering,
     progress,
     duration,
@@ -157,7 +174,9 @@ function PlayerDock() {
       <div className="workspace-player__track">
         {track ? (
           <span className="workspace-player__art">
-            <CoverArt seed={track.cover} ratio="square" />
+            {externalMedia?.thumbnailUrl
+              ? <img src={externalMedia.thumbnailUrl} alt="" loading="lazy" />
+              : <CoverArt seed={track.cover} ratio="square" />}
           </span>
         ) : (
           <span className="workspace-player__art workspace-player__art--empty">
@@ -168,13 +187,20 @@ function PlayerDock() {
           <strong>{track?.title ?? 'Nothing playing yet'}</strong>
           <span>{track?.artist ?? 'Choose something from your listening room'}</span>
         </span>
+        {user && externalMedia ? (
+          <AddToPlaylistButton
+            mediaLibraryId={externalMedia.id}
+            ensureMediaSaved={ensureExternalMediaSaved}
+            label="Add current media to playlist"
+          />
+        ) : null}
       </div>
       <div className="workspace-player__controls">
         <button
           type="button"
           className="iconbtn"
           aria-label="Previous track"
-          disabled={!track || Boolean(externalMedia)}
+          disabled={!track || (Boolean(externalMedia) && (!externalQueue.length || externalQueueIndex <= 0))}
           onClick={() => void skip(-1)}
         >
           <Icon name="skip-back" size={19} />
@@ -192,7 +218,7 @@ function PlayerDock() {
           type="button"
           className="iconbtn"
           aria-label="Next track"
-          disabled={!track || Boolean(externalMedia)}
+          disabled={!track || (Boolean(externalMedia) && externalQueueIndex >= externalQueue.length - 1)}
           onClick={() => void skip(1)}
         >
           <Icon name="skip-forward" size={19} />
@@ -246,6 +272,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const videoWindowRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef(0);
   const [externalMedia, setExternalMedia] = useState<ExternalMedia | null>(null);
+  const [externalQueue, setExternalQueue] = useState<ExternalMedia[]>([]);
+  const [externalQueueIndex, setExternalQueueIndex] = useState(-1);
   const [externalPlaying, setExternalPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -264,6 +292,10 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   useEffect(() => {
     let active = true;
     async function loadPlayer() {
+      if (!user) {
+        setPlayerReady(true);
+        return;
+      }
       try {
         const [loadedMixes, loadedState] = await Promise.all([fetchMixes(), fetchNowPlaying()]);
         let safeState = loadedState;
@@ -290,7 +322,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     }
     void loadPlayer();
     return () => { active = false; };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!externalMedia && nowPlaying) {
@@ -327,6 +359,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setBuffering(true);
     setNowPlaying(null);
     setExternalMedia(media);
+    setExternalQueue([media]);
+    setExternalQueueIndex(0);
     setProgress(0);
     progressRef.current = 0;
     setDuration(0);
@@ -336,6 +370,37 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       setExternalPlaying(true);
     }
     setBuffering(true);
+  }
+
+  function playExternalQueue(queue: ExternalMedia[]) {
+    if (!queue.length) return;
+    setExternalQueue(queue);
+    setExternalQueueIndex(0);
+    playExternalMedia(queue[0]);
+    setExternalQueue(queue);
+    setExternalQueueIndex(0);
+  }
+
+  async function ensureExternalMediaSaved() {
+    if (!externalMedia) throw new Error('There is no external media playing.');
+    if (externalMedia.id) return externalMedia.id;
+    if (externalMedia.provider === 'soundcloud') {
+      throw new Error('SoundCloud media cannot be added to playlists yet.');
+    }
+    const result = await saveMedia({
+      type: externalMedia.type,
+      provider: externalMedia.provider,
+      externalId: externalMedia.externalId,
+      title: externalMedia.title,
+      artist: externalMedia.artist,
+      thumbnailUrl: externalMedia.thumbnailUrl,
+      streamUrl: externalMedia.streamUrl,
+      externalUrl: externalMedia.externalUrl,
+      mediaType: externalMedia.mediaType,
+    });
+    if (!result.item.id) throw new Error('The item was saved, but its library ID was not returned.');
+    setExternalMedia((current) => current ? { ...current, id: result.item.id } : current);
+    return result.item.id;
   }
 
   async function persistPlayback(mix: Mix, track: Track, playing: boolean, seconds: number) {
@@ -382,7 +447,23 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   }
 
   async function skip(direction: -1 | 1) {
-    if (!nowPlaying || externalMedia || mixes.length === 0) return;
+    if (externalMedia) {
+      const nextIndex = externalQueueIndex + direction;
+      const nextMedia = externalQueue[nextIndex];
+      if (!nextMedia) {
+        setExternalPlaying(false);
+        return;
+      }
+      setExternalQueueIndex(nextIndex);
+      setExternalMedia(nextMedia);
+      setExternalPlaying(true);
+      setProgress(0);
+      progressRef.current = 0;
+      setDuration(0);
+      setBuffering(true);
+      return;
+    }
+    if (!nowPlaying || mixes.length === 0) return;
     const queue = mixes.flatMap((mix) => mix.tracks.map((track) => ({ mix, track })));
     const currentIndex = queue.findIndex(({ track }) => track.id === nowPlaying.track.id);
     if (currentIndex < 0 || queue.length === 0) return;
@@ -474,6 +555,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     mixes,
     nowPlaying,
     externalMedia,
+    externalQueue,
+    externalQueueIndex,
     externalPlaying,
     buffering,
     progress,
@@ -486,6 +569,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     updateProgress,
     selectTrack,
     playExternalMedia,
+    playExternalQueue,
+    ensureExternalMediaSaved,
     toggle,
     skip,
     seek,
@@ -501,8 +586,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   return (
     <PlayerContext.Provider value={player}>
-      <div className={`workspace${collapsed ? ' workspace--collapsed' : ''}${mobileMenuOpen ? ' workspace--menu-open' : ''}`}>
-        <aside className="workspace-sidebar" aria-label="Main navigation">
+      <div className={`workspace${collapsed ? ' workspace--collapsed' : ''}${mobileMenuOpen ? ' workspace--menu-open' : ''}${user ? '' : ' workspace--anonymous'}`}>
+        {user ? <aside className="workspace-sidebar" aria-label="Main navigation">
           <div className="workspace-sidebar__brand">
             <Link to="/tapes" className="workspace-brand">
               <span className="workspace-brand__mark"><Icon name="headphones" size={18} /></span>
@@ -538,7 +623,12 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                       end={item.end}
                       title={collapsed ? item.label : undefined}
                       aria-label={collapsed ? item.label : undefined}
-                      className={({ isActive }) => `workspace-nav-link${isActive ? ' is-active' : ''}`}
+                      className={({ isActive }) => {
+                        const active = item.queryTab
+                          ? isActive && (new URLSearchParams(location.search).get('tab') ?? 'mine') === item.queryTab
+                          : isActive;
+                        return `workspace-nav-link${active ? ' is-active' : ''}`;
+                      }}
                     >
                       <Icon name={item.icon} size={18} />
                       <span>{item.label}</span>
@@ -552,9 +642,9 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             <span className="dot dot--live" aria-hidden="true" />
             <span className="workspace-sidebar__footer-label">A quiet place for the night</span>
           </div>
-        </aside>
+        </aside> : null}
 
-        {mobileMenuOpen ? (
+        {user && mobileMenuOpen ? (
           <button
             className="workspace-backdrop"
             type="button"
@@ -564,7 +654,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
         ) : null}
 
         <div className="workspace-main">
-          <header className="workspace-topbar">
+          {user ? <header className="workspace-topbar">
             <button
               type="button"
               className="workspace-topbar__menu"
@@ -627,7 +717,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                 </div>
               ) : null}
             </div>
-          </header>
+          </header> : null}
 
           <main className="workspace-content" key={location.pathname}>
             {children ?? <Outlet />}
@@ -658,7 +748,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => setExternalPlaying(false)}
+                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
                   onError={() => {
                     setBuffering(false);
                     setError('This video podcast episode could not be played.');
@@ -680,7 +770,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => setExternalPlaying(false)}
+                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
                   onError={() => {
                     setBuffering(false);
                     setError('This SoundCloud item could not be played.');
@@ -701,7 +791,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => setExternalPlaying(false)}
+                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
                   onError={() => {
                     setBuffering(false);
                     setError('This video could not be played. The provider may have disabled embedding.');
@@ -749,7 +839,9 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           onBufferEnd={() => setBuffering(false)}
           onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
           onDuration={setDuration}
-          onEnded={() => externalMedia ? setExternalPlaying(false) : void skip(1)}
+          onEnded={() => externalMedia
+            ? externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)
+            : void skip(1)}
           onError={() => {
             setBuffering(false);
             setError('This audio could not be loaded. Check your connection or try another preview.');

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import {
   fetchMovieDetails,
@@ -26,6 +27,10 @@ function MovieCard({ movie }: { movie: MovieSummary }) {
       <div className="media-card__body">
         <h2><Link to={`/movies/${movie.tmdb_id}`}>{movie.title}</Link></h2>
         <p>{movie.year ?? 'Release date unavailable'}</p>
+        <AddToPlaylistButton
+          label={`Add ${movie.title} to a playlist`}
+          ensureMediaSaved={() => saveMovie(movie.tmdb_id)}
+        />
         <Link className="media-card__play-link" to={`/movies/${movie.tmdb_id}`}>
           View details <Icon name="arrow-right" size={14} />
         </Link>
@@ -197,6 +202,10 @@ export function MovieDetailPage() {
             <button className="btn btn--ghost" type="button" onClick={() => void keepMovie()} disabled={saving || saved}>
               <Icon name={saved ? 'check' : 'bookmark'} size={16} /> {saved ? 'Saved to Library' : saving ? 'Saving…' : 'Save to Library'}
             </button>
+            <AddToPlaylistButton
+              label={`Add ${movie.title} to a playlist`}
+              ensureMediaSaved={() => saveMovie(movie.tmdb_id)}
+            />
           </div>
           {movie.cast.length ? (
             <section className="movie-cast">
