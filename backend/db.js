@@ -5,9 +5,14 @@ const { Pool, types } = pg;
 types.setTypeParser(20, Number);
 types.setTypeParser(1700, Number);
 const rawDatabaseUrl = process.env.DATABASE_URL;
-if (!rawDatabaseUrl) throw new Error('DATABASE_URL must be configured for PostgreSQL.');
+if (!rawDatabaseUrl) {
+  throw new Error(
+    'DATABASE_URL is not set. On Render, add it under Environment → Add Environment Variable using your Supabase Shared Pooler connection string (host *.pooler.supabase.com, port 6543, ?pgbouncer=true).',
+  );
+}
 
 const databaseUrl = new URL(rawDatabaseUrl);
+console.info(`[database] PostgreSQL host: ${databaseUrl.hostname}`);
 const usesSupabasePooler = databaseUrl.hostname.endsWith('.pooler.supabase.com')
   || databaseUrl.hostname.endsWith('.supabase.co');
 databaseUrl.searchParams.set('pgbouncer', 'true');
