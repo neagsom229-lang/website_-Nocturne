@@ -22,7 +22,7 @@ ALTER TABLE media_library
     CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
   DROP CONSTRAINT IF EXISTS media_library_provider_check,
   ADD CONSTRAINT media_library_provider_check
-    CHECK (provider IN ('youtube', 'itunes', 'tmdb', 'omdb', 'deezer'));
+    CHECK (provider IN ('youtube', 'itunes', 'tmdb', 'omdb', 'deezer', 'audius'));
 
 ALTER TABLE search_cache
   DROP CONSTRAINT IF EXISTS search_cache_type_check,
