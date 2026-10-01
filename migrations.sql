@@ -1,13 +1,27 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
+  bio TEXT CHECK (bio IS NULL OR length(bio) <= 280),
+  avatar_url TEXT,
+  is_public BOOLEAN NOT NULL DEFAULT false,
+  deleted_at TIMESTAMPTZ,
   email TEXT UNIQUE,
   password_hash TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT users_display_name_length_check CHECK (length(display_name) <= 60)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive
   ON users (LOWER(email)) WHERE email IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS follows (
+  follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  following_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (follower_id, following_id),
+  CHECK (follower_id <> following_id)
+);
+CREATE INDEX IF NOT EXISTS follows_following_idx ON follows(following_id);
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id TEXT PRIMARY KEY,
@@ -116,6 +130,25 @@ CREATE TABLE IF NOT EXISTS media_library (
 
 CREATE INDEX IF NOT EXISTS media_library_user_created
   ON media_library (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS likes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  media_library_id TEXT NOT NULL REFERENCES media_library(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, media_library_id)
+);
+CREATE INDEX IF NOT EXISTS likes_media_idx ON likes(media_library_id);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  media_library_id TEXT NOT NULL REFERENCES media_library(id) ON DELETE CASCADE,
+  body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS comments_media_idx ON comments(media_library_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS comments_user_idx ON comments(user_id);
 
 CREATE TABLE IF NOT EXISTS media_genres (
   media_library_id TEXT NOT NULL REFERENCES media_library(id) ON DELETE CASCADE,

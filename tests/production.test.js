@@ -42,6 +42,17 @@ test('production server serves the app and isolates authenticated feature data',
     context.skip('Configured database needs the current media migrations before the production integration test can run.');
     return;
   }
+  const socialSchema = await database.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'users'
+      AND column_name = 'deleted_at'
+  `);
+  if (socialSchema.rows.length !== 1) {
+    await database.end();
+    context.skip('Configured database needs migration 012 before the social/auth integration test can run.');
+    return;
+  }
 
   const testId = randomUUID();
   const firstEmail = `june-${testId}@example.com`;

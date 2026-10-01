@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getNewReleases: vi.fn(),
   getForYou: vi.fn(),
   getCommunityPlaylists: vi.fn(),
+  getFollowingFeed: vi.fn(),
   prefetchMovieDetails: vi.fn(),
   fetchMovieDetails: vi.fn(),
   user: null as { id: string; displayName: string } | null,
@@ -19,6 +20,10 @@ vi.mock('../src/lib/discoverApi', () => ({
   getNewReleases: mocks.getNewReleases,
   getForYou: mocks.getForYou,
   getCommunityPlaylists: mocks.getCommunityPlaylists,
+}));
+
+vi.mock('../src/lib/socialApi', () => ({
+  getFollowingFeed: mocks.getFollowingFeed,
 }));
 
 vi.mock('../src/lib/moviesApi', () => ({
@@ -62,6 +67,7 @@ beforeEach(() => {
   });
   mocks.getForYou.mockResolvedValue({ movies: [], podcasts: [], music: [] });
   mocks.getCommunityPlaylists.mockResolvedValue([]);
+  mocks.getFollowingFeed.mockResolvedValue({ activities: [], hasMore: false });
   mocks.prefetchMovieDetails.mockResolvedValue({});
 });
 
@@ -76,6 +82,7 @@ describe('discovery home and shelf', () => {
     expect(headings).toEqual([
       'Good things to press play on.',
       'For You',
+      'From People You Follow',
       'Trending Movies',
       'New Podcasts',
       'Fresh Music for You',

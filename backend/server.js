@@ -17,6 +17,8 @@ import moviesRouter from './routes/movies.js';
 import podcastsRouter from './routes/podcasts.js';
 import { createPlaylistsRouter } from './routes/playlists.js';
 import { createDiscoverRouter } from './routes/discover.js';
+import { createUsersRouter } from './routes/users.js';
+import { createSocialRouter } from './routes/social.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -71,9 +73,14 @@ async function authenticate(request, response, next) {
   const publicPlaylistRead = request.method === 'GET' && (
     request.path === '/playlists/public' || /^\/playlists\/\d+$/.test(request.path)
   );
+  const publicUserRead = request.method === 'GET' &&
+    /^\/users\/[^/]+(?:\/(?:playlists|followers|following|liked))?$/.test(request.path) &&
+    request.path !== '/users/me';
+  const publicMediaRead = request.method === 'GET' &&
+    /^\/media\/[^/]+\/(?:likes|comments)$/.test(request.path);
   const token = request.cookies[sessionCookie];
   if (!token) {
-    if (publicPlaylistRead) return next();
+    if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
     return response.status(401).json({ error: 'Please log in to continue' });
   }
   let claims;
@@ -91,9 +98,15 @@ async function authenticate(request, response, next) {
   `).get(claims.jti, claims.sub);
   if (!session) return response.status(401).json({ error: 'Your session ended. Please log in again.' });
   const user = await db.prepare(`
-    SELECT id, email, display_name AS "displayName" FROM users WHERE id = $1
+    SELECT id, email, display_name AS "displayName", deleted_at AS "deletedAt"
+    FROM users WHERE id = $1
   `).get(claims.sub);
-  if (!user) return response.status(401).json({ error: 'Your account is no longer available' });
+  if (!user || (user.deletedAt && !(
+    request.method === 'GET' &&
+    request.path === `/users/${encodeURIComponent(claims.sub)}`
+  ))) {
+    return response.status(401).json({ error: 'Your account is no longer available' });
+  }
   request.user = user;
   return next();
 }
@@ -306,7 +319,7 @@ app.post('/api/auth/login', authLimiter, async (request, response) => {
   try {
     const account = await db.prepare(`
       SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash"
-      FROM users WHERE lower(email) = $1
+      FROM users WHERE lower(email) = $1 AND deleted_at IS NULL
     `).get(email);
     const validPassword = account?.passwordHash
       ? await bcrypt.compare(password, account.passwordHash)
@@ -346,6 +359,8 @@ app.post('/api/auth/logout', async (request, response) => {
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
 app.use('/api', authenticate);
+app.use('/api/users', createUsersRouter({ database: db, authenticate }));
+app.use('/api', createSocialRouter({ database: db, authenticate }));
 app.use('/api/music', musicRouter);
 app.use('/api/movies', moviesRouter);
 app.use('/api/podcasts', podcastsRouter);

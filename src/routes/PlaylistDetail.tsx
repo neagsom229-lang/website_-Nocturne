@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { PlaylistFormModal } from '../components/PlaylistFormModal';
 import { PlaylistItemRow } from '../components/PlaylistItemRow';
+import { CommentThread } from '../components/CommentThread';
 import { useToast } from '../components/Toast';
 import { useOptionalWorkspacePlayer, WorkspaceShell } from '../components/WorkspaceShell';
 import {
@@ -58,6 +59,7 @@ export function PlaylistDetailPage() {
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [commentsFor, setCommentsFor] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -242,6 +244,17 @@ export function PlaylistDetailPage() {
           action={isOwner ? <Link className="btn btn--ghost btn--sm" to="/library">Open your library <Icon name="arrow-right" size={15} /></Link> : undefined}
         />
       )}
+      {items.length ? (
+        <section className="playlist-comments">
+          <h2 className="t-h2">Notes on a track</h2>
+          <label htmlFor="playlist-comment-track">Choose a track to open its conversation</label>
+          <select id="playlist-comment-track" value={commentsFor ?? ''} onChange={(event) => setCommentsFor(event.target.value || null)}>
+            <option value="">Select a track</option>
+            {items.map((item) => <option key={item.mediaLibraryId} value={item.mediaLibraryId}>{item.title}</option>)}
+          </select>
+          {commentsFor ? <CommentThread key={commentsFor} mediaLibraryId={commentsFor} /> : null}
+        </section>
+      ) : null}
       <PlaylistFormModal
         open={editOpen}
         initial={playlist}

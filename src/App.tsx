@@ -28,6 +28,8 @@ const MoviesPage = lazy(() => import('./routes/Movies').then((module) => ({ defa
 const MovieDetailPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MovieDetailPage })));
 const PlaylistsPage = lazy(() => import('./routes/Playlists').then((module) => ({ default: module.PlaylistsPage })));
 const PlaylistDetailRoute = lazy(() => import('./routes/PlaylistDetail').then((module) => ({ default: module.PlaylistDetailRoute })));
+const ProfilePage = lazy(() => import('./routes/ProfilePage').then((module) => ({ default: module.ProfilePage })));
+const Settings = lazy(() => import('./routes/Settings').then((module) => ({ default: module.Settings })));
 const WorkspacePlaceholder = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.WorkspacePlaceholder })));
 
 function RouteLoading() {
@@ -48,6 +50,7 @@ export function App() {
         <Route path="/auth/login" element={<AuthPage mode="login" />} />
         <Route path="/auth/register" element={<AuthPage mode="register" />} />
         <Route path="/playlists/:id" element={<PlaylistDetailRoute />} />
+        <Route path="/u/:id" element={<ProfilePage />} />
         <Route element={<ProtectedRoutes />}>
           <Route path="/tapes" element={<MusicHome />} />
           <Route path="/tapes/discover" element={<MusicDiscover />} />
@@ -57,6 +60,7 @@ export function App() {
           <Route path="/movies" element={<MoviesPage />} />
           <Route path="/movies/:id" element={<MovieDetailPage />} />
           <Route path="/playlists" element={<PlaylistsPage />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/mood" element={<DiaryHome />} />
           <Route path="/trending" element={<WorkspacePlaceholder title="Trending, softly." icon="trend-up" body="A calmer corner for the songs and stories people are finding tonight." />} />
           <Route path="/chat" element={<WorkspacePlaceholder title="A little room to talk." icon="message" body="Your conversations will find a home here. For now, start with the people you’ve matched with." />} />

@@ -5,9 +5,10 @@ import { AppShell } from '../../components/AppShell';
 import { CoverArt } from '../../components/CoverArt';
 import { Icon } from '../../components/Icon';
 import { AddToPlaylistButton } from '../../components/AddToPlaylistButton';
+import { CommentThread } from '../../components/CommentThread';
 import { PageBar } from '../../components/PageBar';
 import { TabBar } from '../../components/TabBar';
-import { saveMedia } from '../../lib/mediaApi';
+import { fetchMediaLibrary, saveMedia } from '../../lib/mediaApi';
 import type {
   PodcastEpisode,
   PodcastPlayerState,
@@ -371,9 +372,21 @@ export function PodcastEpisodePage() {
   const [episode, setEpisode] = useState<PodcastEpisode | null>(null);
   const [error, setError] = useState('');
   const { error: actionError, playEpisode, toggleSaved } = usePodcastActions();
+  const [mediaLibraryId, setMediaLibraryId] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState('');
   useEffect(() => {
-    void fetchPodcastEpisode(episodeId).then(setEpisode).catch((loadError: unknown) =>
+    let active = true;
+    void fetchPodcastEpisode(episodeId).then((loaded) => {
+      if (active) setEpisode(loaded);
+      return fetchMediaLibrary().then((items) => {
+        const existing = items.find((item) => item.provider === 'itunes' && item.externalId === loaded.id);
+        if (active && existing?.id) setMediaLibraryId(existing.id);
+      }).catch((loadError: unknown) => {
+        console.warn('Could not check saved episode status:', loadError);
+      });
+    }).catch((loadError: unknown) =>
       setError(loadError instanceof Error ? loadError.message : 'Could not load this episode.'));
+    return () => { active = false; };
   }, [episodeId]);
 
   async function onToggleSave() {
@@ -382,11 +395,35 @@ export function PodcastEpisodePage() {
     if (isSaved !== null) setEpisode({ ...episode, isSaved });
   }
 
+  async function saveForComments() {
+    if (!episode) return;
+    setLibraryError('');
+    try {
+      const result = await saveMedia({
+        type: 'podcast',
+        provider: 'itunes',
+        externalId: episode.id,
+        title: episode.title,
+        artist: episode.showTitle,
+        thumbnailUrl: null,
+        streamUrl: episode.audioUrl,
+        externalUrl: null,
+        mediaType: 'podcast',
+        durationSeconds: episode.seconds,
+      });
+      if (!result.item.id) throw new Error('The episode was saved, but its library ID was not returned.');
+      setMediaLibraryId(result.item.id);
+    } catch (saveError) {
+      setLibraryError(saveError instanceof Error ? saveError.message : 'Could not save this episode.');
+    }
+  }
+
   return (
     <PodcastFrame>
       {error ? <PodcastError message={error} /> : null}
       {actionError ? <PodcastError message={actionError} /> : null}
       {episode ? (
+        <>
         <article className="podcast-episode-detail">
           <div className="podcast-episode-detail__art"><CoverArt seed={episode.showArt} ratio="square" /></div>
           <Link to={`/static/shows/${episode.showId}`} className="t-eyebrow music-text-link">{episode.showTitle} <Icon name="arrow-right" size={14} /></Link>
@@ -419,6 +456,17 @@ export function PodcastEpisodePage() {
             />
           </div>
         </article>
+        {mediaLibraryId ? (
+          <CommentThread mediaLibraryId={mediaLibraryId} />
+        ) : (
+          <section className="comment-thread">
+            <h2>Notes from the room</h2>
+            <p>Save this episode to your library to open its conversation.</p>
+            {libraryError ? <p className="social-inline-error" role="alert">{libraryError}</p> : null}
+            <button className="social-button" type="button" onClick={() => void saveForComments()}>Save to library</button>
+          </section>
+        )}
+        </>
       ) : !error ? <p className="t-small t-mute">Opening the episode…</p> : null}
     </PodcastFrame>
   );

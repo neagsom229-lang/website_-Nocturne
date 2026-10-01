@@ -94,7 +94,7 @@ const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
   {
     label: 'System',
     items: [
-      { label: 'Profile Settings', to: '/lowlight/profile', icon: 'user' },
+      { label: 'Settings', to: '/settings', icon: 'settings' },
       { label: 'Appearance', to: '/settings/appearance', icon: 'settings' },
       { label: 'About', to: '/about', icon: 'moon' },
     ],
@@ -685,30 +685,37 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
               <Icon name="bell" size={19} />
             </button>
             <div className="workspace-account">
-              <button
-                type="button"
-                className="workspace-account__trigger"
-                aria-haspopup="menu"
-                aria-expanded={accountMenuOpen}
-                onClick={() => setAccountMenuOpen((open) => !open)}
-              >
-                <span className="workspace-account__avatar" aria-hidden="true">
-                  {(user?.displayName ?? 'N').slice(0, 1).toUpperCase()}
-                </span>
-                <span className="workspace-account__name">{user?.displayName ?? 'Listener'}</span>
-                <Icon name="chevron-down" size={15} />
-              </button>
+              <div className="workspace-account__trigger">
+                {user ? (
+                  <Link to={`/u/${encodeURIComponent(user.id)}`} className="workspace-account__avatar" aria-label="My Profile">
+                    {(user.displayName ?? 'N').slice(0, 1).toUpperCase()}
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  className="workspace-account__toggle"
+                  aria-haspopup="menu"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() => setAccountMenuOpen((open) => !open)}
+                >
+                  <span className="workspace-account__name">{user?.displayName ?? 'Listener'}</span>
+                  <Icon name="chevron-down" size={15} />
+                </button>
+              </div>
               {accountMenuOpen ? (
                 <div className="workspace-account__menu" role="menu">
                   <div className="workspace-account__identity">
                     <strong>{user?.displayName}</strong>
                     <span>{user?.email}</span>
                   </div>
-                  <Link to="/lowlight/profile" role="menuitem" className="workspace-account__item">
-                    <Icon name="user" size={17} /> Profile
+                  <Link to={user ? `/u/${encodeURIComponent(user.id)}` : '/auth/login'} role="menuitem" className="workspace-account__item">
+                    <Icon name="user" size={17} /> My Profile
                   </Link>
-                  <Link to="/settings/appearance" role="menuitem" className="workspace-account__item">
+                  <Link to="/settings" role="menuitem" className="workspace-account__item">
                     <Icon name="settings" size={17} /> Settings
+                  </Link>
+                  <Link to="/settings?tab=following" role="menuitem" className="workspace-account__item">
+                    <Icon name="users" size={17} /> Following
                   </Link>
                   <button type="button" role="menuitem" className="workspace-account__item workspace-account__item--signout" onClick={() => void onSignOut()}>
                     <Icon name="close" size={17} /> Sign out

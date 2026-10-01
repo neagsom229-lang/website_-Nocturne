@@ -6,6 +6,7 @@ import { Shelf } from '../components/Shelf';
 import { WorkspaceShell, useOptionalWorkspacePlayer } from '../components/WorkspaceShell';
 import { Icon } from '../components/Icon';
 import { fetchMovieDetails } from '../lib/moviesApi';
+import { getFollowingFeed } from '../lib/socialApi';
 import {
   getCommunityPlaylists,
   getForYou,
@@ -63,6 +64,11 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
   const releases = useSection(getNewReleases, emptyReleases);
   const playlists = useSection(getCommunityPlaylists, [] as PublicPlaylistCard[]);
   const forYou = useSection(getForYou, emptyTrending, signedIn);
+  const following = useSection(
+    getFollowingFeed,
+    { activities: [], hasMore: false },
+    signedIn,
+  );
 
   const heroItems = useMemo(() => [
     ...trending.items.movies,
@@ -219,6 +225,42 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
           ...forYou.items.podcasts,
           ...forYou.items.music,
         ]} renderCard={renderMedia} seeAllHref="/library" />
+      ) : null}
+      {signedIn ? (
+        <section className="following-feed" aria-label="From People You Follow">
+          <header className="following-feed__heading">
+            <div><p className="discovery-eyebrow">YOUR COMMUNITY</p><h2>From People You Follow</h2></div>
+          </header>
+          {following.error ? (
+            <div className="discovery-retry" role="status">
+              <span>Couldn't load this section.</span>
+              <button type="button" onClick={following.retry}>Retry</button>
+            </div>
+          ) : following.loading ? (
+            <p className="following-feed__empty" role="status">Listening for your people…</p>
+          ) : following.items.activities.length ? (
+            <div className="following-feed__list">
+              {following.items.activities.map((activity) => (
+                <article className="following-feed__item" key={`${activity.type}-${activity.id}`}>
+                  <Link to={`/u/${encodeURIComponent(activity.userId)}`} className="following-feed__person">
+                    {activity.displayName}
+                  </Link>
+                  <p>
+                    {activity.type === 'playlist' ? 'created a playlist' : activity.type === 'like' ? 'liked' : 'left a note on'}
+                    {' “'}{activity.title}{'”'}
+                    {activity.body ? <span> — {activity.body}</span> : null}
+                  </p>
+                  <time dateTime={activity.createdAt}>{new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(activity.createdAt))}</time>
+                  {activity.playlistId ? <Link className="following-feed__open" to={`/playlists/${activity.playlistId}`}>Open playlist</Link> : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="following-feed__empty">
+              Follow people to see their activity here. <Link to="/playlists?tab=discover">Explore community playlists</Link> to find listeners.
+            </p>
+          )}
+        </section>
       ) : null}
       <HomeShelf title="Trending Movies" loading={trending.loading} error={trending.error} retry={trending.retry}
         items={trending.items.movies} renderCard={renderMedia} seeAllHref="/movies" />

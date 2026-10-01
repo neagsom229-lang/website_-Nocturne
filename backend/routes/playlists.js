@@ -50,7 +50,7 @@ export async function listPublicPlaylists(database, { sort = 'popular', limit = 
     FROM playlists p
     JOIN users u ON u.id = p.user_id
     LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
-    WHERE p.is_public = true
+    WHERE p.is_public = true AND u.deleted_at IS NULL
     GROUP BY p.id, u.display_name
     ORDER BY ${order}
     LIMIT $1 OFFSET $2
@@ -126,7 +126,7 @@ export function createPlaylistsRouter({ database, authenticate }) {
       FROM playlists p
       JOIN users u ON u.id = p.user_id
       LEFT JOIN playlist_items pi ON pi.playlist_id = p.id
-      WHERE p.id = $1
+      WHERE p.id = $1 AND u.deleted_at IS NULL
       GROUP BY p.id, u.display_name
     `).get(Number(request.params.id));
     if (!playlist) return response.status(404).json({ error: 'Playlist not found' });

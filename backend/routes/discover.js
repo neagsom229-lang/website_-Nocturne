@@ -350,31 +350,8 @@ export function createDiscoverRouter({
     if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
       return response.status(400).json({ error: 'limit must be an integer from 1 to 20.' });
     }
-    const cacheQuery = `discover:public-playlists:${limit}`;
-    const cached = await database.prepare(`
-      SELECT response_json AS "responseJson" FROM search_cache
-      WHERE query = $1 AND type = 'movie' AND expires_at > NOW()
-    `).get(cacheQuery, 'movie');
-    if (cached) {
-      try {
-        return response.json(JSON.parse(cached.responseJson));
-      } catch (error) {
-        console.error('Invalid public-playlist discovery cache entry:', error);
-        await database.prepare(
-          'DELETE FROM search_cache WHERE query = $1 AND type = $2',
-        ).run(cacheQuery, 'movie');
-      }
-    }
     const playlists = await listPublicPlaylists(database, { sort: 'popular', limit, offset: 0 });
-    const result = { playlists };
-    await database.prepare(`
-      INSERT INTO search_cache (query, type, response_json, expires_at)
-      VALUES ($1, 'movie', $2, NOW() + ${CACHE_TTLS.trending})
-      ON CONFLICT (query, type) DO UPDATE SET
-        response_json = excluded.response_json,
-        expires_at = excluded.expires_at
-    `).run(cacheQuery, JSON.stringify(result));
-    return response.json(result);
+    return response.json({ playlists });
   });
 
   return router;

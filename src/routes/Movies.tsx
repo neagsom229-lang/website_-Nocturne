@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
+import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
+import { fetchMediaLibrary } from '../lib/mediaApi';
 import {
   fetchMovieDetails,
   fetchTrendingMovies,
@@ -129,6 +131,7 @@ export function MovieDetailPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [mediaLibraryId, setMediaLibraryId] = useState<string | null>(null);
   const { playExternalMedia } = useWorkspacePlayer();
 
   useEffect(() => {
@@ -142,6 +145,14 @@ export function MovieDetailPage() {
     }).finally(() => {
       if (active) setLoading(false);
     });
+    void fetchMediaLibrary().then((items) => {
+      if (!active) return;
+      const savedMovie = items.find((item) => item.provider === 'tmdb' && item.externalId === id);
+      if (savedMovie?.id) {
+        setMediaLibraryId(savedMovie.id);
+        setSaved(true);
+      }
+    }).catch((loadError: unknown) => console.warn('Could not check saved movie status:', loadError));
     return () => { active = false; };
   }, [id]);
 
@@ -150,7 +161,8 @@ export function MovieDetailPage() {
     setSaving(true);
     setError('');
     try {
-      await saveMovie(movie.tmdb_id);
+      const libraryId = await saveMovie(movie.tmdb_id);
+      setMediaLibraryId(libraryId);
       setSaved(true);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save this movie.');
@@ -214,7 +226,15 @@ export function MovieDetailPage() {
             </section>
           ) : null}
         </div>
-      </div>
+        </div>
+        {mediaLibraryId ? (
+          <div id="comments"><CommentThread mediaLibraryId={mediaLibraryId} /></div>
+        ) : (
+          <section id="comments" className="comment-thread">
+            <h2>Notes from the room</h2>
+            <p>Save this movie to your library to open its conversation.</p>
+          </section>
+        )}
     </section>
   );
 }
