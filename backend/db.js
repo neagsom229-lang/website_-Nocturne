@@ -12,7 +12,6 @@ if (!rawDatabaseUrl) {
 }
 
 const databaseUrl = new URL(rawDatabaseUrl);
-console.info(`[database] PostgreSQL host: ${databaseUrl.hostname}`);
 const usesSupabasePooler = databaseUrl.hostname.endsWith('.pooler.supabase.com')
   || databaseUrl.hostname.endsWith('.supabase.co');
 databaseUrl.searchParams.set('pgbouncer', 'true');
@@ -20,6 +19,8 @@ const pool = new Pool({
   connectionString: databaseUrl.toString(),
   ssl: usesSupabasePooler ? { rejectUnauthorized: true } : undefined,
 });
+await pool.query('SELECT 1');
+console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
 
 function databaseFor(query) {
   return {

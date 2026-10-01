@@ -104,6 +104,15 @@ test('production server serves the app and isolates authenticated feature data',
   });
 
   await waitForServer();
+  const databaseAddress = new URL(databaseUrl);
+  assert.ok(
+    logs.includes(`Connected to PostgreSQL at ${databaseAddress.hostname}:${databaseAddress.port || '5432'}`),
+    'server logs the resolved database address after connecting',
+  );
+  assert.ok(
+    !databaseAddress.password || !logs.includes(databaseAddress.password),
+    'server never logs the database password',
+  );
 
   assert.equal((await fetch(`${baseUrl}/api/search?q=music&type=video`)).status, 401);
   for (const path of [

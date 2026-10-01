@@ -6,13 +6,19 @@ Postgres with the Render web service defined in `render.yaml`.
 
 ## Supabase + Render free tier
 
+> **⚠️ CRITICAL:** Do **not** use the **Direct Connection** string
+> (`db.[project].supabase.co:5432`). You must use the **Shared Pooler /
+> Connection Pooling** URI (`aws-0-[region].pooler.supabase.com:6543`) with
+> `?pgbouncer=true` appended. Direct connections will fail on Render's free
+> tier.
+
 1. Create a project at [supabase.com](https://supabase.com). Save the database
    password securely; it is needed for the connection string.
-2. In the Supabase project, open **Connect** and choose the **Shared Pooler**
-   connection string (transaction pooler). Use the URI format and copy the
-   host, port, database, and username from the dashboard. Add
-   `?pgbouncer=true` to the URI, or `&pgbouncer=true` if it already has query
-   parameters. The app also enforces this setting at startup.
+2. In the Supabase dashboard, click **Connect → Connection Pooling → Shared
+   Pooler → URI**. Copy that connection string (not the Direct Connection
+   string). Confirm it uses port `6543`; add `?pgbouncer=true`, or
+   `&pgbouncer=true` if it already has query parameters. The app also enforces
+   this setting at startup.
 3. Open **SQL Editor**, create a query, paste the complete contents of the
    repository's `migrations.sql`, and run it. Confirm that the schema
    statements complete successfully before deploying the app.
@@ -69,11 +75,12 @@ and paste the Supabase Shared Pooler URI as its value. Save the changes and
 redeploy. A `DATABASE_URL` listed only in your local `.env` is not available
 to the hosted service.
 
-At startup, the server logs only the parsed PostgreSQL hostname, for example
-`[database] PostgreSQL host: aws-0-region.pooler.supabase.com`. Confirm it is a
-Shared Pooler hostname; the server does not log the URI or password. If it
-shows a direct `db.*.supabase.co` hostname, replace the value with the Shared
-Pooler URI and redeploy.
+After connecting, the server logs only the parsed PostgreSQL hostname and
+port, for example
+`Connected to PostgreSQL at aws-0-region.pooler.supabase.com:6543`. Confirm
+it is a Shared Pooler hostname; the server does not log the URI or password.
+If it shows a direct `db.*.supabase.co` hostname, replace the value with the
+Shared Pooler URI and redeploy.
 
 ## Local development
 
