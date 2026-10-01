@@ -36,6 +36,18 @@ function secureUrl(value) {
   }
 }
 
+function safePathname(value) {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return null;
+  }
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => typeof value === 'string' && value.trim())?.trim() ?? null;
+}
+
 function searchYouTube(query, apiKey, fetchImpl) {
   if (!apiKey) {
     throw new MediaSearchError('youtube_not_configured', 503);
@@ -108,10 +120,54 @@ async function searchITunes(query, type, fetchImpl) {
   });
 }
 
+export function normalizeVideoPodcastResults(results) {
+  if (!Array.isArray(results)) throw new MediaSearchError('itunes_invalid_response');
+
+  return results.flatMap((item) => {
+    const id = item.trackId;
+    const title = item.trackName;
+    if (id === undefined || typeof title !== 'string') return [];
+
+    const previewUrl = secureUrl(firstNonEmpty(item.previewUrl));
+    const previewPath = previewUrl ? safePathname(previewUrl) : null;
+    const isVideoPreview = previewPath !== null && /\.(?:mp4|m4v)$/i.test(previewPath);
+    const streamUrl = secureUrl(firstNonEmpty(item.videoUrl))
+      ?? (isVideoPreview ? previewUrl : null);
+    if (!streamUrl) return [];
+
+    return [{
+      id: String(id),
+      title,
+      channel: item.artistName ?? 'Unknown channel',
+      thumbnail_url: secureUrl(item.artworkUrl600 ?? item.artworkUrl100),
+      stream_url: streamUrl,
+      duration_seconds: Number.isFinite(item.trackTimeMillis)
+        ? Math.round(item.trackTimeMillis / 1000)
+        : null,
+      media_type: 'video_podcast',
+      source: 'itunes',
+      external_url: secureUrl(item.trackViewUrl ?? item.collectionViewUrl),
+    }];
+  });
+}
+
+async function searchITunesVideoPodcasts(query, fetchImpl) {
+  const url = new URL('https://itunes.apple.com/search');
+  url.search = new URLSearchParams({
+    term: query,
+    entity: 'podcastEpisode',
+    media: 'podcast',
+    limit: '20',
+  });
+  const data = await fetchJson(url, 'itunes', fetchImpl);
+  return normalizeVideoPodcastResults(data.results);
+}
+
 export async function searchExternalMedia(query, type, {
   apiKey = process.env.YOUTUBE_API_KEY,
   fetchImpl = fetch,
 } = {}) {
   if (type === 'video') return searchYouTube(query, apiKey, fetchImpl);
+  if (type === 'video_podcast') return searchITunesVideoPodcasts(query, fetchImpl);
   return searchITunes(query, type, fetchImpl);
 }

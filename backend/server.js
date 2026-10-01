@@ -14,6 +14,7 @@ import { db, initializeDatabase, initializeUserData } from './db.js';
 import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
 import musicRouter from './routes/music.js';
 import moviesRouter from './routes/movies.js';
+import podcastsRouter from './routes/podcasts.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -338,6 +339,7 @@ app.post('/api/auth/logout', async (request, response) => {
 app.use('/api', authenticate);
 app.use('/api/music', musicRouter);
 app.use('/api/movies', moviesRouter);
+app.use('/api/podcasts', podcastsRouter);
 
 app.get('/api/search', searchLimiter, async (request, response, next) => {
   const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
@@ -345,8 +347,8 @@ app.get('/api/search', searchLimiter, async (request, response, next) => {
   if (!query || query.length > 200) {
     return response.status(400).json({ error: 'A search query of 1 to 200 characters is required' });
   }
-  if (!['video', 'podcast', 'audio'].includes(type)) {
-    return response.status(400).json({ error: 'type must be "video", "podcast", or "audio"' });
+  if (!['video', 'podcast', 'audio', 'video_podcast'].includes(type)) {
+    return response.status(400).json({ error: 'type must be "video", "podcast", "audio", or "video_podcast"' });
   }
 
   const cacheQuery = query.toLowerCase();

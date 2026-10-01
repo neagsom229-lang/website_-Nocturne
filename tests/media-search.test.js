@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MediaSearchError, searchExternalMedia } from '../backend/mediaSearch.js';
+import {
+  MediaSearchError,
+  normalizeVideoPodcastResults,
+  searchExternalMedia,
+} from '../backend/mediaSearch.js';
 
 test('YouTube search results are normalized as embeddable video metadata', async () => {
   let requestedUrl;
@@ -93,6 +97,122 @@ test('iTunes audio results use preview URLs and omit unplayable or insecure resu
   assert.equal(results.length, 1);
   assert.equal(results[0].type, 'audio');
   assert.equal(results[0].streamUrl, 'https://audio.example/preview.mp3');
+});
+
+test('iTunes video podcast search requests episode results and filters audio-only episodes', async () => {
+  let requestedUrl;
+  const results = await searchExternalMedia('night stories', 'video_podcast', {
+    fetchImpl: async (url) => {
+      requestedUrl = new URL(url);
+      return {
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              trackId: 71,
+              trackName: 'The filmed episode',
+              artistName: 'Night Stories',
+              previewUrl: 'https://media.example/episode-71.M4V?token=abc',
+              artworkUrl100: 'https://images.example/show.jpg',
+              trackTimeMillis: 123456,
+              trackViewUrl: 'https://podcasts.example/episode/71',
+            },
+            {
+              trackId: 72,
+              trackName: 'Audio-only episode',
+              previewUrl: 'https://media.example/episode-72.mp3',
+            },
+            {
+              trackId: 73,
+              trackName: 'Video URL episode',
+              previewUrl: 'https://media.example/audio-73.mp3',
+              videoUrl: 'https://media.example/video-73.mp4',
+            },
+            {
+              trackId: 74,
+              trackName: 'Insecure video',
+              videoUrl: 'http://media.example/video-74.mp4',
+            },
+            {
+              trackId: 75,
+              trackName: 'Malformed preview',
+              previewUrl: 'not a valid url',
+            },
+            {
+              trackId: 76,
+              trackName: 'Empty video URL',
+              videoUrl: '   ',
+            },
+            {
+              trackId: 77,
+              trackName: 'MP4 preview with query',
+              previewUrl: 'https://media.example/episode-77.mp4?token=abc',
+            },
+            {
+              trackId: 78,
+              trackName: 'MP3 preview only',
+              previewUrl: 'https://media.example/episode-78.mp3',
+            },
+          ],
+        }),
+      };
+    },
+  });
+
+  assert.equal(requestedUrl.origin + requestedUrl.pathname, 'https://itunes.apple.com/search');
+  assert.equal(requestedUrl.searchParams.get('term'), 'night stories');
+  assert.equal(requestedUrl.searchParams.get('media'), 'podcast');
+  assert.equal(requestedUrl.searchParams.get('entity'), 'podcastEpisode');
+  assert.deepEqual(results, [
+    {
+      id: '71',
+      title: 'The filmed episode',
+      channel: 'Night Stories',
+      thumbnail_url: 'https://images.example/show.jpg',
+      stream_url: 'https://media.example/episode-71.M4V?token=abc',
+      duration_seconds: 123,
+      media_type: 'video_podcast',
+      source: 'itunes',
+      external_url: 'https://podcasts.example/episode/71',
+    },
+    {
+      id: '73',
+      title: 'Video URL episode',
+      channel: 'Unknown channel',
+      thumbnail_url: null,
+      stream_url: 'https://media.example/video-73.mp4',
+      duration_seconds: null,
+      media_type: 'video_podcast',
+      source: 'itunes',
+      external_url: null,
+    },
+    {
+      id: '77',
+      title: 'MP4 preview with query',
+      channel: 'Unknown channel',
+      thumbnail_url: null,
+      stream_url: 'https://media.example/episode-77.mp4?token=abc',
+      duration_seconds: null,
+      media_type: 'video_podcast',
+      source: 'itunes',
+      external_url: null,
+    },
+  ]);
+});
+
+test('video podcast normalizer rejects audio-only and malformed URLs without failing the batch', () => {
+  assert.deepEqual(normalizeVideoPodcastResults([
+    { trackId: 81, trackName: 'Audio only', previewUrl: 'https://media.example/audio.m4a' },
+    { trackName: 'No ID', videoUrl: 'https://media.example/video.mp4' },
+    { trackId: 82, trackName: 'Malformed preview', previewUrl: 'not a valid url' },
+    { trackId: 83, trackName: 'Empty video URL', videoUrl: '' },
+    { trackId: 84, trackName: 'MP3 preview only', previewUrl: 'https://media.example/audio.mp3' },
+  ]), []);
+
+  assert.throws(
+    () => normalizeVideoPodcastResults({ results: [] }),
+    (error) => error instanceof MediaSearchError && error.code === 'itunes_invalid_response',
+  );
 });
 
 test('YouTube search reports missing server configuration without making a request', async () => {

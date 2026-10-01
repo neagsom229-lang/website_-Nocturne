@@ -60,6 +60,13 @@ interval to 5 minutes. The health endpoint responds to these regular checks.
 Alternatively, upgrade the Render service to the Starter plan ($7/month) to
 remove the free-tier sleep limit.
 
+## Video Podcasts
+
+Video podcast search uses the free, unauthenticated iTunes Search API and needs
+no additional API key or deployment configuration. iTunes exposes video URLs
+for relatively few podcast episodes, so searches may return few or no results;
+this is a limitation of the catalog metadata, not a deployment error.
+
 ## Required Render Environment Variables
 
 The Blueprint configures `NODE_ENV=production` and `TRUST_PROXY=1`, and
