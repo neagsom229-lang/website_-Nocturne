@@ -15,16 +15,21 @@ const databaseUrl = new URL(rawDatabaseUrl);
 const usesSupabasePooler = databaseUrl.hostname.endsWith('.pooler.supabase.com');
 const usesSupabaseHost = databaseUrl.hostname.endsWith('.supabase.co');
 databaseUrl.searchParams.set('pgbouncer', 'true');
+const ssl = usesSupabasePooler
+  // Supabase's pooler certificate chain isn't trusted by Node by default.
+  ? { rejectUnauthorized: false }
+  : usesSupabaseHost
+    ? { rejectUnauthorized: true }
+    : undefined;
 const pool = new Pool({
   connectionString: databaseUrl.toString(),
-  ssl: usesSupabasePooler
-    // Supabase's pooler certificate chain isn't trusted by Node by default.
-    ? { rejectUnauthorized: false }
-    : usesSupabaseHost
-      ? { rejectUnauthorized: true }
-      : undefined,
+  ssl,
 });
-console.info(`Connecting to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
+console.info(
+  `Connecting to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'} `
+  + `as ${databaseUrl.username} `
+  + `(ssl.rejectUnauthorized=${ssl?.rejectUnauthorized ?? 'default'})`,
+);
 await pool.query('SELECT 1');
 console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
 

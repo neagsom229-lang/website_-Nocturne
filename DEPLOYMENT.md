@@ -19,6 +19,9 @@ Postgres with the Render web service defined in `render.yaml`.
    string). Confirm it uses port `6543`; add `?pgbouncer=true`, or
    `&pgbouncer=true` if it already has query parameters. The app also enforces
    this setting at startup.
+   For the pooler, the username must be `postgres.<project-ref>`, not just
+   `postgres`. URL-encode special characters in the password (such as `@`, `:`,
+   `#`, `?`, or `!`) before using it in the URI.
 3. Open **SQL Editor**, create a query, paste the complete contents of the
    repository's `migrations.sql`, and run it. Confirm that the schema
    statements complete successfully before deploying the app.
