@@ -13,6 +13,16 @@ export type MixSwipe = {
   createdAt: string;
 };
 
+export type AudiusTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  artwork: string | null;
+  durationSeconds: number | null;
+  streamUrl: string;
+  externalUrl: string;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -68,4 +78,9 @@ export async function saveSwipe(mixId: string, action: MixSwipe['action']): Prom
     method: 'POST',
     body: JSON.stringify({ mixId, action }),
   });
+}
+
+export async function fetchRandomAudiusTrack(): Promise<AudiusTrack> {
+  const response = await request<{ track: AudiusTrack }>('/api/music/random-audius');
+  return response.track;
 }

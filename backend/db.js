@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import pg from 'pg';
+import { getSslConfig } from './dbConfig.js';
 
 const { Pool, types } = pg;
 types.setTypeParser(20, Number);
@@ -12,15 +13,8 @@ if (!rawDatabaseUrl) {
 }
 
 const databaseUrl = new URL(rawDatabaseUrl);
-const usesSupabasePooler = databaseUrl.hostname.endsWith('.pooler.supabase.com');
-const usesSupabaseHost = databaseUrl.hostname.endsWith('.supabase.co');
 databaseUrl.searchParams.set('pgbouncer', 'true');
-const ssl = usesSupabasePooler
-  // Supabase's pooler certificate chain isn't trusted by Node by default.
-  ? { rejectUnauthorized: false }
-  : usesSupabaseHost
-    ? { rejectUnauthorized: true }
-    : undefined;
+const ssl = getSslConfig(databaseUrl);
 const pool = new Pool({
   connectionString: databaseUrl.toString(),
   ssl,

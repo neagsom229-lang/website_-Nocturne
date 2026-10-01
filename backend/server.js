@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { db, initializeDatabase, initializeUserData } from './db.js';
 import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
+import musicRouter from './routes/music.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -334,6 +335,7 @@ app.post('/api/auth/logout', async (request, response) => {
 });
 
 app.use('/api', authenticate);
+app.use('/api/music', musicRouter);
 
 app.get('/api/search', searchLimiter, async (request, response, next) => {
   const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';

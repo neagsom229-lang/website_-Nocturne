@@ -96,12 +96,19 @@ CREATE TABLE IF NOT EXISTS media_library (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
-  provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes')),
+  provider TEXT NOT NULL CHECK (provider IN ('youtube', 'itunes', 'tmdb', 'omdb', 'deezer')),
   external_id TEXT NOT NULL,
+  media_type TEXT CHECK (media_type IN ('music', 'podcast', 'movie', 'video_podcast')),
+  external_source TEXT CHECK (external_source IN ('tmdb', 'omdb', 'itunes', 'deezer')),
   title TEXT NOT NULL,
   artist TEXT,
   thumbnail_url TEXT,
   stream_url TEXT NOT NULL,
+  duration_seconds INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  release_year INTEGER,
+  rating NUMERIC,
+  description TEXT,
+  trailer_url TEXT,
   external_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, provider, external_id)
@@ -112,10 +119,16 @@ CREATE INDEX IF NOT EXISTS media_library_user_created
 
 CREATE TABLE IF NOT EXISTS search_cache (
   query TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio')),
+  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio', 'movie', 'music', 'video_podcast')),
   response_json TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (query, type)
+);
+
+CREATE TABLE IF NOT EXISTS random_music_cache (
+  genre TEXT PRIMARY KEY,
+  track_json TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS journal_entries (

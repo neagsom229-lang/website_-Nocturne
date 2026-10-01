@@ -14,6 +14,7 @@ import {
   fetchNowPlaying,
   fetchSwipes,
   saveSwipe,
+  fetchRandomAudiusTrack,
   type MixSwipe,
   type NowPlaying,
 } from '../../lib/musicApi';
@@ -79,8 +80,9 @@ export function MusicHome() {
   const [mixes, setMixes] = useState<Mix[]>([]);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [error, setError] = useState('');
+  const [audiusLoading, setAudiusLoading] = useState(false);
   const navigate = useNavigate();
-  const { selectTrack } = useWorkspacePlayer();
+  const { selectTrack, playExternalMedia } = useWorkspacePlayer();
 
   async function loadHome() {
     setError('');
@@ -106,6 +108,28 @@ export function MusicHome() {
     }
   }
 
+  async function surpriseMe() {
+    setAudiusLoading(true);
+    setError('');
+    try {
+      const track = await fetchRandomAudiusTrack();
+      playExternalMedia({
+        type: 'audio',
+        provider: 'audius',
+        externalId: track.id,
+        title: track.title,
+        artist: track.artist,
+        thumbnailUrl: track.artwork,
+        streamUrl: track.streamUrl,
+        externalUrl: track.externalUrl,
+      });
+    } catch (playError) {
+      setError(playError instanceof Error ? playError.message : 'Could not find an Audius track.');
+    } finally {
+      setAudiusLoading(false);
+    }
+  }
+
   const featured = mixes[0];
 
   return (
@@ -115,6 +139,15 @@ export function MusicHome() {
         <p className="t-eyebrow">Wednesday, September 30</p>
         <h1 className="t-h1">A softer place<br />to land tonight.</h1>
         <p className="t-body">No skips, no rush. Just a little room to breathe.</p>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={() => void surpriseMe()}
+          disabled={audiusLoading}
+        >
+          <Icon name="sparkle" size={16} />
+          {audiusLoading ? 'Finding a track…' : 'Surprise me'}
+        </button>
       </header>
 
       {featured ? (

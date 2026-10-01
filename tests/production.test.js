@@ -5,6 +5,7 @@ import { createServer } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import test from 'node:test';
+import { getSslConfig } from '../backend/dbConfig.js';
 
 const { Pool } = pg;
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -28,12 +29,10 @@ test('production server serves the app and isolates authenticated feature data',
   const testId = randomUUID();
   const firstEmail = `june-${testId}@example.com`;
   const secondEmail = `noor-${testId}@example.com`;
-  const databaseHost = new URL(databaseUrl).hostname;
-  const usesSupabaseSsl = databaseHost.endsWith('.pooler.supabase.com')
-    || databaseHost.endsWith('.supabase.co');
+  const parsedDatabaseUrl = new URL(databaseUrl);
   const database = new Pool({
     connectionString: databaseUrl,
-    ssl: usesSupabaseSsl ? { rejectUnauthorized: true } : undefined,
+    ssl: getSslConfig(parsedDatabaseUrl),
   });
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;

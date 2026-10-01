@@ -34,7 +34,7 @@ const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-
 type ExternalMedia = {
   id?: string;
   type: 'video' | 'podcast' | 'audio';
-  provider: 'youtube' | 'itunes' | 'soundcloud';
+  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius';
   externalId: string;
   title: string;
   artist: string | null;
@@ -661,10 +661,10 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           key={externalMedia?.type === 'audio' || externalMedia?.type === 'podcast'
             ? externalMedia.externalId
             : 'nocturne-audio'}
-          url={externalMedia?.provider === 'itunes'
+          url={externalMedia?.type === 'audio' || externalMedia?.type === 'podcast'
             ? externalMedia.streamUrl
             : DEMO_AUDIO_URL}
-          playing={externalMedia?.provider === 'itunes'
+          playing={externalMedia?.type === 'audio' || externalMedia?.type === 'podcast'
             ? externalPlaying
             : Boolean(nowPlaying?.isPlaying)}
           volume={volume}
