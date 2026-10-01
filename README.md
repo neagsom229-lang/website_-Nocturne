@@ -50,8 +50,9 @@ _Screenshot placeholder: add an application screenshot at
    ```
 
 The web app is served by Vite during development, and the API listens on port
-3001 by default. See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete Supabase +
-Render setup and deployment verification checklist.
+3001 by default. See [DEPLOYMENT.md](DEPLOYMENT.md) for Supabase + Render, or
+[ORACLE_DEPLOYMENT.md](ORACLE_DEPLOYMENT.md) and [setup.sh](setup.sh) to
+self-host on an Oracle Cloud Ubuntu ARM instance.
 
 ## Build and tests
 
