@@ -222,9 +222,8 @@ async function listJournalEntries(userId, mood = null) {
   `).all(userId, mood);
 }
 
-app.get('/api/health', async (_request, response) => {
-  await db.query('SELECT 1');
-  response.json({ status: 'ok', database: 'connected' });
+app.get('/api/health', (_request, response) => {
+  response.status(200).json({ status: 'ok' });
 });
 
 const authLimiter = rateLimit({
