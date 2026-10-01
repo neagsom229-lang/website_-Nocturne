@@ -19,6 +19,7 @@ const pool = new Pool({
   connectionString: databaseUrl.toString(),
   ssl: usesSupabasePooler ? { rejectUnauthorized: true } : undefined,
 });
+console.info(`Connecting to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
 await pool.query('SELECT 1');
 console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
 
