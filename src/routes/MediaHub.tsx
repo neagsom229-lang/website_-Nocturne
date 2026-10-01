@@ -3,15 +3,24 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
-import type { MediaItem, MediaType } from '../lib/mediaApi';
-import { deleteLibraryItem, fetchMediaLibrary, saveMedia, searchMedia } from '../lib/mediaApi';
+import type { LibraryMediaType, MediaItem, MediaType } from '../lib/mediaApi';
+import { deleteLibraryItem, fetchMediaLibrary, saveMedia, searchMedia, searchVideoPodcasts } from '../lib/mediaApi';
 import { searchMovies, type MovieSummary } from '../lib/moviesApi';
 
 const MEDIA_TABS: { type: MediaType | 'movie'; label: string }[] = [
-  { type: 'video', label: 'Music Videos' },
+  { type: 'audio', label: 'Music' },
   { type: 'podcast', label: 'Podcasts' },
   { type: 'movie', label: 'Movies' },
-  { type: 'audio', label: 'Audio Tracks' },
+  { type: 'video_podcast', label: 'Video' },
+  { type: 'video', label: 'Music Videos' },
+];
+
+const LIBRARY_FILTERS: { type: 'all' | LibraryMediaType | 'video'; label: string }[] = [
+  { type: 'all', label: 'All' },
+  { type: 'music', label: 'Music' },
+  { type: 'podcast', label: 'Podcasts' },
+  { type: 'movie', label: 'Movies' },
+  { type: 'video', label: 'Video' },
 ];
 
 function MediaSkeletons() {
@@ -62,11 +71,21 @@ function MediaCard({
           <span className="media-card__fallback"><Icon name={item.type === 'video' ? 'play-circle' : 'headphones'} size={28} /></span>
         )}
         <span className="media-card__play"><Icon name="play" size={17} /></span>
-        <span className="media-card__type">{item.type === 'audio' ? 'AUDIO PREVIEW' : item.type.toUpperCase()}</span>
+        <span className="media-card__type">
+          {item.mediaType === 'video_podcast'
+            ? 'VIDEO PODCAST'
+            : item.mediaType === 'movie' || item.mediaType === 'tv'
+              ? item.mediaType.toUpperCase()
+              : item.mediaType === 'music'
+                ? 'MUSIC'
+                : item.mediaType === 'podcast'
+                  ? 'PODCAST'
+                  : item.type === 'audio' ? 'AUDIO PREVIEW' : item.type.toUpperCase()}
+        </span>
       </button>
       <div className="media-card__body">
         <h2>{item.title}</h2>
-        <p>{item.artist || (item.provider === 'youtube' ? 'YouTube' : 'iTunes')}</p>
+        <p>{item.artist || (item.provider === 'youtube' ? 'YouTube' : item.provider === 'audius' ? 'Audius' : 'iTunes')}</p>
         <div className="media-card__actions">
           {onSave ? (
             <button className="btn btn--primary btn--sm" type="button" onClick={onSave} disabled={saved || saving}>
@@ -102,6 +121,7 @@ export function SearchResultsPage() {
     : 'video';
   const [results, setResults] = useState<MediaItem[]>([]);
   const [movieResults, setMovieResults] = useState<MovieSummary[]>([]);
+  const [videoHint, setVideoHint] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -113,12 +133,14 @@ export function SearchResultsPage() {
     if (!query) {
       setResults([]);
       setMovieResults([]);
+      setVideoHint('');
       setLoading(false);
       setError('');
       return () => { active = false; };
     }
     setLoading(true);
     setError('');
+    setVideoHint('');
     if (activeType === 'movie') {
       setResults([]);
       void searchMovies(query)
@@ -130,7 +152,22 @@ export function SearchResultsPage() {
       return () => { active = false; };
     }
     setMovieResults([]);
-    void searchMedia(query, activeType)
+    if (activeType === 'video_podcast') {
+      void searchVideoPodcasts(query)
+        .then(({ items, hint }) => {
+          if (active) {
+            setResults(items);
+            setVideoHint(hint ?? '');
+          }
+        })
+        .catch((searchError: unknown) => {
+          if (active) setError(searchError instanceof Error ? searchError.message : 'Video podcast search could not be completed.');
+        })
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
+    }
+    const search = searchMedia(query, activeType);
+    void search
       .then((items) => { if (active) setResults(items); })
       .catch((searchError: unknown) => {
         if (active) setError(searchError instanceof Error ? searchError.message : 'Search could not be completed.');
@@ -224,7 +261,7 @@ export function SearchResultsPage() {
             <EmptyState
               icon="search"
               title="Nothing came through this time."
-              body="Try a different search, or switch the kind of media you’re looking for."
+              body={videoHint || 'Try a different search, or switch the kind of media you’re looking for.'}
             />
           ) : null
         )
@@ -245,6 +282,7 @@ export function MusicLibraryPage() {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [copiedId, setCopiedId] = useState('');
+  const [activeFilter, setActiveFilter] = useState<(typeof LIBRARY_FILTERS)[number]['type']>('all');
   const { playExternalMedia } = useWorkspacePlayer();
 
   async function loadLibrary() {
@@ -260,6 +298,14 @@ export function MusicLibraryPage() {
   }
 
   useEffect(() => { void loadLibrary(); }, []);
+
+  const filteredItems = items.filter((item) => {
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'video') return item.mediaType === 'video_podcast' || item.type === 'video';
+    if (activeFilter === 'music') return item.mediaType === 'music' || item.type === 'audio';
+    if (activeFilter === 'podcast') return item.mediaType === 'podcast' || item.type === 'podcast';
+    return item.mediaType === activeFilter || (activeFilter === 'movie' && item.mediaType === 'tv');
+  });
 
   async function remove(item: MediaItem) {
     if (!item.id) return;
@@ -299,9 +345,23 @@ export function MusicLibraryPage() {
         <p className="t-body">A collection of songs, stories, and videos to return to.</p>
       </header>
       {error ? <div className="music-error" role="alert">{error}</div> : null}
-      {loading ? <MediaSkeletons /> : items.length ? (
+      <div className="media-tabs" role="tablist" aria-label="Filter library by media type">
+        {LIBRARY_FILTERS.map((filter) => (
+          <button
+            key={filter.type}
+            type="button"
+            role="tab"
+            aria-selected={activeFilter === filter.type}
+            className={activeFilter === filter.type ? 'is-active' : ''}
+            onClick={() => setActiveFilter(filter.type)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+      {loading ? <MediaSkeletons /> : filteredItems.length ? (
         <div className="media-grid">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <MediaCard
               key={item.id}
               item={item}
@@ -316,8 +376,8 @@ export function MusicLibraryPage() {
       ) : !error ? (
         <EmptyState
           icon="library"
-          title="Your library is still a little quiet."
-          body="Start exploring and save anything you want to keep close."
+          title={items.length ? 'Nothing in this shelf yet.' : 'Your library is still a little quiet.'}
+          body={items.length ? 'Try another library filter to see more of what you have saved.' : 'Start exploring and save anything you want to keep close.'}
           action={<Link className="btn btn--primary btn--sm" to="/search"><Icon name="search" size={15} /> Start exploring</Link>}
         />
       ) : null}

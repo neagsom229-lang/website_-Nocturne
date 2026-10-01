@@ -751,6 +751,44 @@
   animation: workspace-enter 230ms var(--tp-ease) both;
 }
 
+.workspace-video-window--podcast {
+  isolation: isolate;
+}
+
+.workspace-video-window__actions {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 2;
+  display: flex;
+  gap: 5px;
+}
+
+.workspace-video-window__actions .iconbtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(18, 12, 18, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.workspace-video-window__actions .iconbtn:hover {
+  color: var(--tp-acc);
+  background: rgba(18, 12, 18, 0.95);
+}
+
+.workspace-video-window--podcast:fullscreen {
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+
 .workspace-video-window > div,
 .workspace-video-window iframe,
 .workspace-video-window video {

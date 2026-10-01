@@ -408,6 +408,17 @@ export const ICON_GLYPHS = {
       <path d="M13.6 8.8v6.4" />
     </>
   ),
+  'picture-in-picture': (
+    <>
+      <rect x="3.8" y="5" width="16.4" height="14" rx="1.6" />
+      <path d="M12.6 12.2h5.2v4.2h-5.2z" />
+    </>
+  ),
+  fullscreen: (
+    <>
+      <path d="M8.4 4.4H4.8v3.8M15.6 4.4h3.6v3.8M4.8 15.8v3.8h3.6M19.2 15.8v3.8h-3.6" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_GLYPHS;

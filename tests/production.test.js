@@ -26,14 +26,26 @@ async function availablePort() {
 test('production server serves the app and isolates authenticated feature data', {
   skip: databaseUrl ? false : 'Set TEST_DATABASE_URL to a migrated PostgreSQL database',
 }, async (context) => {
-  const testId = randomUUID();
-  const firstEmail = `june-${testId}@example.com`;
-  const secondEmail = `noor-${testId}@example.com`;
   const parsedDatabaseUrl = new URL(databaseUrl);
   const database = new Pool({
     connectionString: databaseUrl,
     ssl: getSslConfig(parsedDatabaseUrl),
   });
+  const mediaSchema = await database.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'media_library'
+      AND column_name IN ('media_type', 'duration_seconds')
+  `);
+  if (mediaSchema.rows.length !== 2) {
+    await database.end();
+    context.skip('Configured database needs the current media migrations before the production integration test can run.');
+    return;
+  }
+
+  const testId = randomUUID();
+  const firstEmail = `june-${testId}@example.com`;
+  const secondEmail = `noor-${testId}@example.com`;
   const port = await availablePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, ['backend/server.js'], {

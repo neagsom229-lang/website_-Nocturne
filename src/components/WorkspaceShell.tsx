@@ -35,6 +35,7 @@ type ExternalMedia = {
   id?: string;
   type: 'video' | 'podcast' | 'audio';
   provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius';
+  mediaType?: 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
   externalId: string;
   title: string;
   artist: string | null;
@@ -149,9 +150,10 @@ function PlayerDock() {
     seconds: duration,
     cover: externalMedia.thumbnailUrl ?? 'moonlit-sill',
   } : nowPlaying?.track;
+  const isVideo = externalMedia?.type === 'video' || externalMedia?.mediaType === 'video_podcast';
 
   return (
-    <footer className="workspace-player" aria-label="Global audio player">
+    <footer className={`workspace-player${isVideo ? ' workspace-player--video' : ''}`} aria-label="Global audio player">
       <div className="workspace-player__track">
         {track ? (
           <span className="workspace-player__art">
@@ -241,6 +243,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const audioRef = useRef<FilePlayerInstance>(null);
   const videoRef = useRef<YouTubePlayerInstance>(null);
   const soundcloudRef = useRef<SoundCloudPlayerInstance>(null);
+  const videoWindowRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef(0);
   const [externalMedia, setExternalMedia] = useState<ExternalMedia | null>(null);
   const [externalPlaying, setExternalPlaying] = useState(false);
@@ -409,6 +412,30 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       videoRef.current.seekTo(seconds, 'seconds');
     } else if (audioRef.current) {
       audioRef.current.seekTo(seconds, 'seconds');
+    }
+  }
+
+  async function togglePictureInPicture() {
+    if (!document.pictureInPictureEnabled) return;
+    const player = audioRef.current?.getInternalPlayer();
+    if (!(player instanceof HTMLVideoElement) || !player.requestPictureInPicture) {
+      setError('Picture-in-Picture is not available for this video.');
+      return;
+    }
+    try {
+      if (document.pictureInPictureElement === player) await document.exitPictureInPicture();
+      else await player.requestPictureInPicture();
+    } catch (pipError) {
+      setError(pipError instanceof Error ? pipError.message : 'Could not open Picture-in-Picture.');
+    }
+  }
+
+  async function enterVideoFullscreen() {
+    if (!videoWindowRef.current?.requestFullscreen) return;
+    try {
+      await videoWindowRef.current.requestFullscreen();
+    } catch (fullscreenError) {
+      setError(fullscreenError instanceof Error ? fullscreenError.message : 'Could not open fullscreen video.');
     }
   }
 
@@ -606,9 +633,37 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
         </div>
 
         {externalMedia?.type === 'video' || externalMedia?.provider === 'soundcloud' ? (
-          <div className="workspace-video-window" aria-label={`Video player: ${externalMedia.title}`}>
+          <div
+            className={`workspace-video-window${externalMedia.mediaType === 'video_podcast' ? ' workspace-video-window--podcast' : ''}`}
+            aria-label={`Video player: ${externalMedia.title}`}
+            ref={videoWindowRef}
+          >
             <Suspense fallback={<span className="workspace-video-loading" role="status">Opening the video player…</span>}>
-              {externalMedia.provider === 'soundcloud' ? (
+              {externalMedia.mediaType === 'video_podcast' ? (
+                <FilePlayer
+                  key={externalMedia.externalId}
+                  ref={audioRef}
+                  url={externalMedia.streamUrl}
+                  playing={externalPlaying}
+                  controls
+                  playsinline
+                  volume={volume}
+                  width="100%"
+                  height="100%"
+                  progressInterval={500}
+                  onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
+                  onDuration={setDuration}
+                  onBuffer={() => setBuffering(true)}
+                  onBufferEnd={() => setBuffering(false)}
+                  onReady={() => setBuffering(false)}
+                  onEnded={() => setExternalPlaying(false)}
+                  onError={() => {
+                    setBuffering(false);
+                    setError('This video podcast episode could not be played.');
+                  }}
+                  config={{ file: { forceVideo: true, forceDisableHls: true } }}
+                />
+              ) : externalMedia.provider === 'soundcloud' ? (
                 <SoundCloudPlayer
                   key={externalMedia.externalId}
                   ref={soundcloudRef}
@@ -653,8 +708,23 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                 />
               )}
             </Suspense>
+            {externalMedia.mediaType === 'video_podcast' ? (
+              <div className="workspace-video-window__actions">
+                {document.pictureInPictureEnabled ? (
+                  <button type="button" className="iconbtn" onClick={() => void togglePictureInPicture()} aria-label="Toggle Picture-in-Picture">
+                    <Icon name="picture-in-picture" size={17} />
+                  </button>
+                ) : null}
+                {document.fullscreenEnabled ? (
+                  <button type="button" className="iconbtn" onClick={() => void enterVideoFullscreen()} aria-label="Enter fullscreen">
+                    <Icon name="fullscreen" size={17} />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
+        {externalMedia?.mediaType !== 'video_podcast' ? (
         <Suspense fallback={<span className="sr-only" role="status">Loading audio player…</span>}>
           <FilePlayer
           className="workspace-file-player"
@@ -685,6 +755,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           config={{ file: { forceAudio: true, forceDisableHls: true, forceDASH: false } }}
           />
         </Suspense>
+        ) : null}
         <PlayerDock />
       </div>
     </PlayerContext.Provider>

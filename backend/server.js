@@ -400,7 +400,8 @@ app.get('/api/library', async (request, response) => {
   const items = await db.prepare(`
     SELECT id, type, provider, external_id AS "externalId", title, artist,
       thumbnail_url AS "thumbnailUrl", stream_url AS "streamUrl",
-      external_url AS "externalUrl", created_at AS "createdAt"
+      external_url AS "externalUrl", media_type AS "mediaType",
+      duration_seconds AS "durationSeconds", created_at AS "createdAt"
     FROM media_library WHERE user_id = $1
     ORDER BY created_at DESC, id DESC
   `).all(request.user.id);
@@ -445,7 +446,8 @@ app.post('/api/library/save', async (request, response) => {
   const item = await db.prepare(`
     SELECT id, type, provider, external_id AS "externalId", title, artist,
       thumbnail_url AS "thumbnailUrl", stream_url AS "streamUrl",
-      external_url AS "externalUrl", created_at AS "createdAt"
+      external_url AS "externalUrl", media_type AS "mediaType",
+      duration_seconds AS "durationSeconds", created_at AS "createdAt"
     FROM media_library WHERE user_id = $1 AND provider = $2 AND external_id = $3
   `).get(request.user.id, provider, externalId.trim());
   return response.status(saved.changes ? 201 : 200).json({ item, alreadySaved: !saved.changes });
