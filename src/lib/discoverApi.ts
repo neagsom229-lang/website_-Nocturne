@@ -1,16 +1,27 @@
 import type { DiscoveryMedia, PublicPlaylistCard } from '../types';
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(path);
-  const payload: unknown = await response.json();
-  if (!response.ok) {
-    const message = typeof payload === 'object' && payload !== null
-      && 'error' in payload && typeof payload.error === 'string'
-      ? payload.error
-      : `Request failed (${response.status})`;
-    throw new Error(message);
+async function request<T>(path: string, retries = 3, delayMs = 500): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(path);
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        const message = typeof payload === 'object' && payload !== null
+          && 'error' in payload && typeof payload.error === 'string'
+          ? payload.error
+          : `Request failed (${response.status})`;
+        throw new Error(message);
+      }
+      return payload as T;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
   }
-  return payload as T;
+  throw lastError;
 }
 
 export type TrendingFeed = {

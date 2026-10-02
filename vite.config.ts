@@ -10,7 +10,14 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: false,
       proxy: {
-        '/api': `http://127.0.0.1:${port}`,
+        '/api': {
+          target: `http://127.0.0.1:${port}`,
+          configure: (proxy) => {
+            proxy.on('error', (_err, _req, _res) => {
+              // Suppress connection ECONNREFUSED spam during cold start before backend is listening
+            });
+          },
+        },
       },
     },
     build: {
