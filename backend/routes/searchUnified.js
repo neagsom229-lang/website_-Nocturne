@@ -359,13 +359,14 @@ export function createSearchUnifiedRouter({ database }) {
 
       const payload = { suggestions: topSuggestions };
 
+      // Verify type = 'suggest' is written to search_cache (whitelisted in migration 014)
       await database.prepare(`
         INSERT INTO search_cache (query, type, sort, response_json, expires_at)
         VALUES ($1, 'suggest', 'relevance', $2, NOW() + ${SUGGEST_CACHE_TTL})
         ON CONFLICT (query, type, sort) DO UPDATE SET
           response_json = excluded.response_json,
           expires_at = excluded.expires_at
-      `).run(cacheKey, JSON.stringify(payload)).catch(() => {});
+      `).run(cacheKey, JSON.stringify(payload)).catch(recordCacheWriteFailure);
 
       return response.json(payload);
     } catch (error) {
