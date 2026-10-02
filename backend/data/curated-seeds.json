@@ -1,40 +1,40 @@
 {
   "music": [
     {
-      "id": "audius-seed-1",
-      "title": "Sunset Lofi Beats",
-      "artist": "Audius Curated",
-      "thumbnail_url": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400",
-      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/seed-1/stream?app_name=Nocturne",
+      "id": "95wro",
+      "title": "Stars In The Sky - Lofi Beats",
+      "artist": "Lofi Beats",
+      "thumbnail_url": "https://v.monophonic.digital/content/QmVqupGHZuhjxAgePsiZYyRFkvPUMrzsHMkDVaaGrGUzDK/480x480.jpg",
+      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne",
       "media_type": "music",
       "source": "audius"
     },
     {
-      "id": "audius-seed-2",
-      "title": "Midnight Study Session",
-      "artist": "Audius Curated",
-      "thumbnail_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400",
-      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/seed-2/stream?app_name=Nocturne",
+      "id": "YmJWK",
+      "title": "kirbytape mix vol. 13 - lofi house edition",
+      "artist": "omgkirby",
+      "thumbnail_url": "https://val006.open-audio-validator.com/content/QmPHYjy9G8XDH6izXRJeBU7zD3NEeyuh6vap2cATvkisfu/480x480.jpg",
+      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/YmJWK/stream?app_name=Nocturne",
       "media_type": "music",
       "source": "audius"
     }
   ],
   "podcasts": [
     {
-      "id": "itunes-seed-1",
-      "title": "Daily Tech Briefing",
-      "channel": "iTunes Curated",
-      "thumbnail_url": "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400",
-      "stream_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "id": "1000791959249",
+      "title": "Raspberry Pi in the Sky - What OpenAI's Security Fiasco Means for Tech Safety",
+      "channel": "Unknown podcast",
+      "thumbnail_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts126/v4/9b/96/ac/9b96ac54-6ef1-9380-43ad-83f3066155a0/mza_10914428610214068995.jpg/600x600bb.jpg",
+      "stream_url": "https://pdst.fm/e/pscrb.fm/rss/p/mgln.ai/e/294/cdn.twit.tv/captivate/twit_1103/137d0471-cb85-40e3-ad82-79d599a1ac4f/twit1103.mp3",
       "media_type": "podcast",
       "source": "itunes"
     },
     {
-      "id": "itunes-seed-2",
-      "title": "Future of Design",
-      "channel": "iTunes Curated",
-      "thumbnail_url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400",
-      "stream_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      "id": "1000792604203",
+      "title": "Bloomberg Tech Screentime Special",
+      "channel": "Unknown podcast",
+      "thumbnail_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/f5/9c/9f/f59c9f1f-cbc8-0e46-629d-2df7e6a18274/mza_3594252261487211794.jpg/600x600bb.jpg",
+      "stream_url": "https://podtrac.com/pts/redirect.mp3/traffic.omny.fm/d/clips/e73c998e-6e60-432f-8610-ae210140c5b1/41764a4f-fc64-4e11-89ba-ae7c0030ab5e/3cb43512-8c79-4446-8c85-b4d6010ddafc/audio.mp3?utm_source=Podcast&in_playlist=9caafc41-289c-4115-995d-ae7c0030ab75",
       "media_type": "podcast",
       "source": "itunes"
     }
