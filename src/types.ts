@@ -34,8 +34,8 @@ export type DiscoveryMedia = {
   title: string;
   description?: string | null;
   thumbnail_url: string | null;
-  media_type: 'movie' | 'podcast' | 'music' | 'video';
-  source: 'tmdb' | 'itunes' | 'audius' | 'youtube' | 'omdb' | 'deezer';
+  media_type: 'movie' | 'podcast' | 'music' | 'video' | 'tv' | 'audiobook' | 'video_podcast';
+  source: 'tmdb' | 'itunes' | 'audius' | 'youtube' | 'omdb' | 'deezer' | 'librivox';
   stream_url?: string | null;
   external_url?: string | null;
   channel?: string | null;
@@ -45,6 +45,7 @@ export type DiscoveryMedia = {
   rating?: number | null;
   duration_seconds?: number | null;
   isPlayable?: boolean;
+  trailer_url?: string | null;
 };
 
 export type PublicPlaylistCard = {

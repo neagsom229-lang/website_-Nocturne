@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    include: ['tests/**/*frontend.test.tsx'],
+    include: ['tests/**/*frontend.test.tsx', 'tests/**/*.test.ts'],
     clearMocks: true,
   },
 });

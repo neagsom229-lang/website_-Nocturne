@@ -94,6 +94,20 @@ without stored genre rows. `/api/discover/for-you` uses cached genre
 recommendations where available and falls back to trending without making
 per-movie TMDB detail requests.
 
+## Verify All Media Types
+
+□ Search "inception" → movie card appears → click → detail page → trailer plays
+□ Search "breaking bad" → TV card appears → click → seasons visible
+□ Search "lofi" → music cards appear → click → Audius audio plays
+□ Search "daft punk" → Deezer previews appear → click → 30s preview plays
+□ Search "tech podcast" → podcast cards appear → click → MP3 plays
+□ Search "video podcast" → video cards appear → click → MP4 plays with PiP
+□ Search "sherlock" → LibriVox audiobook appears → click → chapter plays
+□ Search "lofi beats" on Video tab → YouTube cards → click → video plays
+□ Add any item to a playlist → open playlist → Play All works
+□ Like any item → check profile "Liked" tab → item appears
+□ Comment on any item → comment persists after reload
+
 ## Required Render Environment Variables
 
 The Blueprint configures `NODE_ENV=production` and `TRUST_PROXY=1`, and

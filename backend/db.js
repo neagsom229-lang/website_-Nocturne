@@ -293,17 +293,22 @@ export async function initializeDatabase() {
   }
 
   try {
-    const typeConstraintCheck = await db.prepare(`
+    const expected = [
+      'video', 'podcast', 'audio', 'movie', 'music', 'video_podcast',
+      'tv', 'audiobook', 'youtube', 'deezer', 'librivox', 'all', 'suggest'
+    ];
+    const { rows } = await db.query(`
       SELECT pg_get_constraintdef(oid) AS def
       FROM pg_constraint
       WHERE conname = 'search_cache_type_check'
-    `).get();
-    const typeDef = typeConstraintCheck?.def ?? '';
-    const expectedTypes = ['video', 'podcast', 'audio', 'movie', 'music', 'video_podcast', 'all', 'suggest'];
-    const missingTypes = expectedTypes.filter((t) => !typeDef.includes(t));
-    if (missingTypes.length > 0) {
-      console.warn(`WARNING: search_cache_type_check constraint is missing expected types (${missingTypes.join(', ')}). Please apply migration 014.`);
+    `);
+    const def = rows[0]?.def ?? '';
+    const missing = expected.filter(t => !def.includes(`'${t}'`));
+    if (missing.length) {
+      console.error(`[db] FATAL: search_cache constraint missing types: ${missing.join(', ')}. Run the latest search_cache migration.`);
+      process.exit(1);
     }
+    console.info('[db] search_cache constraint includes all expected types');
   } catch (error) {
     console.debug('Could not verify search_cache_type_check constraint:', error.message);
   }

@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { saveDiscoveryMedia } from '../lib/mediaApi';
 import { prefetchMovieDetails } from '../lib/moviesApi';
 import { getComments, getLikes, likeMedia, unlikeMedia } from '../lib/socialApi';
+import { getPlaybackTarget } from '../lib/playbackRouter';
 import type { DiscoveryMedia } from '../types';
 import { AddToPlaylistButton } from './AddToPlaylistButton';
 import { Icon } from './Icon';
@@ -11,25 +12,22 @@ import { useOptionalWorkspacePlayer } from './WorkspaceShell';
 
 function mediaTypeLabel(type: DiscoveryMedia['media_type']) {
   if (type === 'movie') return '🎬 Movie';
+  if (type === 'tv') return '📺 TV';
   if (type === 'podcast') return '🎙️ Podcast';
   if (type === 'music') return '🎵 Music';
+  if (type === 'audiobook') return '📖 Audiobook';
+  if (type === 'video_podcast') return '📹 Video';
   return '📹 Video';
 }
 
-function playerMedia(media: DiscoveryMedia) {
-  const isMovie = media.media_type === 'movie';
-  return {
-    type: isMovie || media.media_type === 'video' ? 'video' as const
-      : media.media_type === 'podcast' ? 'podcast' as const : 'audio' as const,
-    provider: media.source,
-    mediaType: media.media_type === 'video' ? 'video_podcast' as const : media.media_type,
-    externalId: media.id,
-    title: media.title,
-    artist: media.artist ?? media.channel ?? null,
-    thumbnailUrl: media.thumbnail_url,
-    streamUrl: media.stream_url ?? media.external_url ?? '',
-    externalUrl: media.external_url ?? null,
-  };
+function getDetailHref(media: DiscoveryMedia) {
+  if (media.media_type === 'movie') return `/movies/${encodeURIComponent(media.id)}`;
+  if (media.media_type === 'tv') return `/tv/${encodeURIComponent(media.id)}`;
+  if (media.media_type === 'music') return `/music/${encodeURIComponent(media.id)}`;
+  if (media.media_type === 'podcast') return `/podcasts/${encodeURIComponent(media.id)}`;
+  if (media.media_type === 'audiobook') return `/audiobooks/${encodeURIComponent(media.id)}`;
+  if (media.media_type === 'video' || media.media_type === 'video_podcast') return `/video-podcasts/${encodeURIComponent(media.id)}`;
+  return undefined;
 }
 
 export { saveDiscoveryMedia } from '../lib/mediaApi';
@@ -61,7 +59,7 @@ export function MediaCard({
   const [likeError, setLikeError] = useState('');
   const [likeBusy, setLikeBusy] = useState(false);
   const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const movieHref = media.media_type === 'movie' ? `/movies/${encodeURIComponent(media.id)}` : undefined;
+  const detailHref = getDetailHref(media);
 
   useEffect(() => {
     if (!mediaLibraryId) return;
@@ -95,9 +93,48 @@ export function MediaCard({
       onPlay(media);
       return;
     }
-    const item = playerMedia(media);
-    if (!item.streamUrl) return;
-    player?.playExternalMedia(item);
+    const target = getPlaybackTarget(media);
+    if (target.kind === 'youtube') {
+      player?.playExternalMedia({
+        type: 'video',
+        provider: 'youtube',
+        mediaType: media.media_type === 'video_podcast' ? 'video_podcast' : media.media_type,
+        externalId: target.videoId,
+        title: target.title,
+        artist: media.artist ?? media.channel ?? null,
+        thumbnailUrl: media.thumbnail_url,
+        streamUrl: `https://www.youtube.com/watch?v=${target.videoId}`,
+        externalUrl: media.external_url ?? null,
+      });
+    } else if (target.kind === 'audio') {
+      player?.playExternalMedia({
+        type: 'audio',
+        provider: media.source,
+        mediaType: media.media_type,
+        externalId: media.id,
+        title: target.title,
+        artist: media.artist ?? media.channel ?? null,
+        thumbnailUrl: media.thumbnail_url,
+        streamUrl: target.streamUrl,
+        externalUrl: media.external_url ?? null,
+      });
+    } else if (target.kind === 'video') {
+      player?.playExternalMedia({
+        type: 'video',
+        provider: media.source,
+        mediaType: media.media_type,
+        externalId: media.id,
+        title: target.title,
+        artist: media.artist ?? media.channel ?? null,
+        thumbnailUrl: media.thumbnail_url,
+        streamUrl: target.streamUrl,
+        externalUrl: media.external_url ?? null,
+      });
+    } else if (target.kind === 'external') {
+      window.open(target.url, '_blank', 'noopener,noreferrer');
+    } else {
+      console.warn('Playback unsupported:', target.reason);
+    }
   }
 
   async function toggleLike() {
@@ -131,6 +168,9 @@ export function MediaCard({
   }
 
   const subtitle = media.release_year ?? media.artist ?? media.channel ?? '';
+  const playbackTarget = getPlaybackTarget(media);
+  const isUnsupported = playbackTarget.kind === 'unsupported';
+
   return (
     <article
       className={`media-card${media.media_type === 'music' ? ' media-card--square' : ''}`}
@@ -144,14 +184,17 @@ export function MediaCard({
           ? <img src={media.thumbnail_url} alt="" loading="lazy" />
           : <span className="media-card__fallback" aria-hidden="true" />}
         {showTypeBadge ? <span className="media-card__badge">{mediaTypeLabel(media.media_type)}</span> : null}
+        {isUnsupported ? (
+          <span className="media-card__unsupported-badge" title={playbackTarget.reason}>Not available</span>
+        ) : null}
         <div className="media-card__actions">
-          {media.isPlayable !== false ? (
+          {media.isPlayable !== false && !isUnsupported ? (
             <button
               className="media-card__play"
               type="button"
               aria-label={`Play ${media.title}`}
               onClick={play}
-              disabled={!onPlay && !media.stream_url && !media.external_url && !movieHref}
+              disabled={!onPlay && !media.stream_url && !media.external_url && !detailHref}
             ><Icon name="play" size={17} /></button>
           ) : media.external_url ? (
             <a
@@ -165,8 +208,8 @@ export function MediaCard({
         </div>
       </div>
       <div className="media-card__copy">
-        {movieHref
-          ? <Link to={movieHref} className="media-card__title">{media.title}</Link>
+        {detailHref
+          ? <Link to={detailHref} className="media-card__title">{media.title}</Link>
           : <strong className="media-card__title">{media.title}</strong>}
         {subtitle ? <span>{subtitle}</span> : null}
         <div className="media-card__copy-actions">
@@ -186,8 +229,8 @@ export function MediaCard({
               </Link>
             )}
             {likeError ? <span className="social-inline-error" role="alert">{likeError}</span> : null}
-            {commentCount !== null ? movieHref ? (
-              <Link className="media-card__comment-count" to={`${movieHref}#comments`} aria-label={`${commentCount} comments`}>
+            {commentCount !== null ? detailHref ? (
+              <Link className="media-card__comment-count" to={`${detailHref}#comments`} aria-label={`${commentCount} comments`}>
                 <Icon name="message" size={14} />{commentCount}
               </Link>
             ) : (

@@ -86,6 +86,28 @@ router.get('/trending', async (request, response) => {
   }
 });
 
+router.get('/tv/:id', async (request, response) => {
+  const id = request.params.id;
+  if (!/^\d+$/.test(id)) {
+    return response.status(400).json({ error: 'Provide a valid TMDB TV show ID.' });
+  }
+  try {
+    const show = await cachedTmdb(`tv-detail:${id}`, async () => {
+      const [details, videos] = await Promise.all([getTvDetails(id), getTvVideos(id)]);
+      const normalized = normalizeMovieDetails(details, Array.isArray(videos.results) ? videos.results : []);
+      return {
+        ...normalized,
+        seasons: Array.isArray(details.seasons) ? details.seasons : [],
+        number_of_seasons: details.number_of_seasons ?? 1,
+        number_of_episodes: details.number_of_episodes ?? 0,
+      };
+    });
+    return response.json({ show });
+  } catch (error) {
+    return handleProviderError(error, response);
+  }
+});
+
 router.get('/upcoming', async (_request, response) => {
   try {
     const results = await cachedTmdb('upcoming', async () => {

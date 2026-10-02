@@ -26,6 +26,11 @@ const SearchResultsPage = lazy(() => import('./routes/SearchResults').then((modu
 const MusicLibraryPage = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.MusicLibraryPage })));
 const MoviesPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MoviesPage })));
 const MovieDetailPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MovieDetailPage })));
+const TvDetail = lazy(() => import('./routes/TvDetail').then((module) => ({ default: module.TvDetail })));
+const MusicDetail = lazy(() => import('./routes/MusicDetail').then((module) => ({ default: module.MusicDetail })));
+const AudiobookDetail = lazy(() => import('./routes/AudiobookDetail').then((module) => ({ default: module.AudiobookDetail })));
+const VideoPodcastDetail = lazy(() => import('./routes/VideoPodcastDetail').then((module) => ({ default: module.VideoPodcastDetail })));
+const PodcastDetail = lazy(() => import('./routes/PodcastDetail').then((module) => ({ default: module.PodcastDetail })));
 const PlaylistsPage = lazy(() => import('./routes/Playlists').then((module) => ({ default: module.PlaylistsPage })));
 const PlaylistDetailRoute = lazy(() => import('./routes/PlaylistDetail').then((module) => ({ default: module.PlaylistDetailRoute })));
 const ProfilePage = lazy(() => import('./routes/ProfilePage').then((module) => ({ default: module.ProfilePage })));
@@ -59,6 +64,11 @@ export function App() {
           <Route path="/library" element={<MusicLibraryPage />} />
           <Route path="/movies" element={<MoviesPage />} />
           <Route path="/movies/:id" element={<MovieDetailPage />} />
+          <Route path="/tv/:id" element={<TvDetail />} />
+          <Route path="/music/:id" element={<MusicDetail />} />
+          <Route path="/audiobooks/:id" element={<AudiobookDetail />} />
+          <Route path="/video-podcasts/:id" element={<VideoPodcastDetail />} />
+          <Route path="/podcasts/:id" element={<PodcastDetail />} />
           <Route path="/playlists" element={<PlaylistsPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/mood" element={<DiaryHome />} />

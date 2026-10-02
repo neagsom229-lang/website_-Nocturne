@@ -5,8 +5,8 @@ import type { NowPlaying } from './musicApi';
 export type ExternalMedia = {
   id?: string;
   type: 'video' | 'podcast' | 'audio';
-  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius' | 'tmdb' | 'omdb' | 'deezer';
-  mediaType?: 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
+  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius' | 'tmdb' | 'omdb' | 'deezer' | 'librivox';
+  mediaType?: 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast' | 'audiobook' | 'video';
   externalId: string;
   title: string;
   artist: string | null;

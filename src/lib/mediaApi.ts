@@ -2,8 +2,8 @@ import type { DiscoveryMedia } from '../types';
 import { saveMovie } from './moviesApi';
 
 export type MediaType = 'video' | 'podcast' | 'audio' | 'video_podcast';
-export type MediaProvider = 'youtube' | 'itunes' | 'tmdb' | 'omdb' | 'deezer' | 'audius';
-export type LibraryMediaType = 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
+export type MediaProvider = 'youtube' | 'itunes' | 'tmdb' | 'omdb' | 'deezer' | 'audius' | 'librivox';
+export type LibraryMediaType = 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast' | 'audiobook' | 'video';
 
 export type MediaItem = {
   id?: string;
