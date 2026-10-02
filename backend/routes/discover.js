@@ -14,6 +14,8 @@ import { getCachedGenreRecommendations } from '../services/movieGenreCache.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const curatedSeedsPath = path.join(__dirname, '../data/curated-seeds.json');
+const seedPath = path.join(__dirname, '..', 'data', 'curated-seeds.json');
+console.info('[discover] seed file:', { path: seedPath, exists: fs.existsSync(seedPath) });
 let curatedSeeds = { music: [], podcasts: [] };
 try {
   curatedSeeds = JSON.parse(fs.readFileSync(curatedSeedsPath, 'utf8'));

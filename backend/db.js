@@ -52,16 +52,10 @@ export const db = {
   ...databaseFor((sql, params) => pool.query(sql, params)),
   async transaction(callback) {
     const client = await pool.connect();
-    const pending = [];
-    const tx = databaseFor((sql, params) => {
-      const result = client.query(sql, params);
-      pending.push(result);
-      return result;
-    });
+    const tx = databaseFor((sql, params) => client.query(sql, params));
     try {
       await client.query('BEGIN');
       const value = await callback(tx);
-      await Promise.all(pending);
       await client.query('COMMIT');
       return value;
     } catch (error) {

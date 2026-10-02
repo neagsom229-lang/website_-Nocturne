@@ -3,103 +3,45 @@ import express from 'express';
 import { db } from '../db.js';
 import { getTrendingMovies, normalizeMovie } from '../services/movieSearch.js';
 import { getRandomTrack } from '../services/audiusSearch.js';
+import { searchTvShows } from '../services/tvSearch.js';
+import { searchYouTubeVideos } from '../services/youtubeSearch.js';
+import { searchAudiobooks } from '../services/librivoxSearch.js';
+import { searchDeezerMusic } from '../services/deezerSearch.js';
 import { createDiscoverRouter } from '../routes/discover.js';
 
 async function diagnose() {
-  console.log('--- DIAGNOSTIC: DISCOVER & DATABASE ---');
+  console.log('--- DIAGNOSTIC: FULL PROVIDER COVERAGE ---');
 
-  // 1. TMDB check
+  // 1. TMDB TV check
   try {
-    const tmdbRes = await getTrendingMovies('week');
-    const first = tmdbRes.results?.[0];
-    const normalized = first ? normalizeMovie(first) : null;
-    console.log('TMDB Trending:', {
-      count: tmdbRes.results?.length ?? 0,
-      firstTitle: normalized?.title ?? null,
-    });
+    const tv = await searchTvShows('breaking bad');
+    console.info('[diag] tv:', { count: tv.length, first: tv[0]?.title });
   } catch (error) {
-    console.error('TMDB Check Failed:', error.message);
+    console.error('TV Search Check Failed:', error.message);
   }
 
-  // 2. Audius check
+  // 2. YouTube check
   try {
-    const audiusTrack = await getRandomTrack();
-    console.log('Audius Search (lofi):', {
-      count: audiusTrack ? 1 : 0,
-      firstTitle: audiusTrack?.title ?? null,
-      firstStreamUrl: audiusTrack?.streamUrl ?? null,
-    });
+    const yt = await searchYouTubeVideos('lofi beats');
+    console.info('[diag] youtube:', { count: yt.length, first: yt[0]?.title });
   } catch (error) {
-    console.error('Audius Search Check Failed:', error.message);
+    console.error('YouTube Search Check Failed:', error.message);
   }
 
+  // 3. LibriVox check
   try {
-    const trendingUrl = 'https://discoveryprovider.audius.co/v1/tracks/trending?app_name=Nocturne';
-    const res = await fetch(trendingUrl, { headers: { Accept: 'application/json' } });
-    const text = await res.text();
-    console.log('Audius Raw Trending Endpoint:', {
-      status: res.status,
-      responseLength: text.length,
-      ok: res.ok,
-    });
+    const lb = await searchAudiobooks('sherlock');
+    console.info('[diag] librivox:', { count: lb.length, first: lb[0]?.title });
   } catch (error) {
-    console.error('Audius Raw Trending Fetch Failed:', error.message);
+    console.error('LibriVox Search Check Failed:', error.message);
   }
 
-  // 3. iTunes podcast check
+  // 4. Deezer check
   try {
-    const itunesUrl = new URL('https://itunes.apple.com/search');
-    itunesUrl.search = new URLSearchParams({ term: 'tech', entity: 'podcast', media: 'podcast', limit: '5' });
-    const res = await fetch(itunesUrl);
-    const data = await res.json();
-    const first = data.results?.[0];
-    console.log('iTunes Podcast Search (tech):', {
-      count: data.resultCount ?? data.results?.length ?? 0,
-      firstTitle: first?.collectionName ?? first?.trackName ?? null,
-      firstStreamUrl: first?.feedUrl ?? first?.collectionViewUrl ?? null,
-    });
+    const dz = await searchDeezerMusic('daft punk');
+    console.info('[diag] deezer:', { count: dz.length, first: dz[0]?.title });
   } catch (error) {
-    console.error('iTunes Podcast Search Check Failed:', error.message);
-  }
-
-  // Start the server on a scratch port, then call /api/discover/trending
-  try {
-    const app = express();
-    app.use('/api/discover', createDiscoverRouter({ database: db, authenticate: (req, res, next) => next() }));
-    await new Promise((resolve, reject) => {
-      const scratchServer = app.listen(0, async () => {
-        const port = scratchServer.address().port;
-        try {
-          const res = await fetch(`http://127.0.0.1:${port}/api/discover/trending`);
-          const data = await res.json();
-          console.info('=== /api/discover/trending response ===');
-          console.info('movies.length:',   data.movies?.length);
-          console.info('music.length:',    data.music?.length);
-          console.info('podcasts.length:', data.podcasts?.length);
-          console.info('music[0]:',        JSON.stringify(data.music?.[0], null, 2));
-          console.info('podcasts[0]:',     JSON.stringify(data.podcasts?.[0], null, 2));
-        } catch (err) {
-          console.error('Discover trending endpoint fetch failed:', err);
-        } finally {
-          scratchServer.close(resolve);
-        }
-      });
-      scratchServer.on('error', reject);
-    });
-  } catch (err) {
-    console.error('Scratch server diagnostic failed:', err);
-  }
-
-  // 4. search_cache check constraint check
-  try {
-    const constraint = await db.prepare(`
-      SELECT pg_get_constraintdef(oid) AS def
-      FROM pg_constraint
-      WHERE conrelid = 'search_cache'::regclass AND conname = 'search_cache_type_check'
-    `).get();
-    console.log('search_cache_type_check constraint:', constraint?.def ?? 'NOT FOUND');
-  } catch (error) {
-    console.error('Constraint Check Failed (Local SQLite or missing DB?):', error.message);
+    console.error('Deezer Search Check Failed:', error.message);
   }
 
   console.log('--- DIAGNOSTIC COMPLETE ---');
