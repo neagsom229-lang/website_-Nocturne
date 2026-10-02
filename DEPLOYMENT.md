@@ -24,7 +24,12 @@ Postgres with the Render web service defined in `render.yaml`.
    `#`, `?`, or `!`) before using it in the URI.
 3. Open **SQL Editor**, create a query, paste the complete contents of the
    repository's `migrations.sql`, and run it. Confirm that the schema
-   statements complete successfully before deploying the app.
+   statements complete successfully before deploying the app. If updating an existing database, apply migration 014:
+   ```sql
+   ALTER TABLE search_cache DROP CONSTRAINT IF EXISTS search_cache_type_check;
+   ALTER TABLE search_cache ADD CONSTRAINT search_cache_type_check
+     CHECK (type IN ('video', 'podcast', 'audio', 'movie', 'music', 'video_podcast', 'all', 'suggest'));
+   ```
 4. In Render, choose **New + → Blueprint**, select this GitHub repository and
    the `main` branch, then apply the Blueprint at the repository root. It
    creates the Docker web service on Render's `free` plan, with

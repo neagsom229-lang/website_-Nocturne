@@ -35,7 +35,52 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http:/
   .map((origin) => origin.trim())
   .filter(Boolean);
 app.disable('x-powered-by');
-app.use(helmet());
+// Content Security Policy configuration:
+// In development (NODE_ENV !== 'production'), a permissive CSP is applied to support Vite HMR (@vite/client),
+// inline scripts, eval, and local dev server origins.
+// In production (NODE_ENV === 'production'), a strict but functional CSP is applied via helmet restricting
+// scripts, connections, images, media, and frames to trusted domains.
+if (process.env.NODE_ENV === 'production') {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "https://www.youtube.com"],
+          connectSrc: ["'self'", "https://api.themoviedb.org", "https://itunes.apple.com", "https://discoveryprovider.audius.co", "https://www.youtube.com", "https://*.supabase.co"],
+          imgSrc: ["'self'", "data:", "https://image.tmdb.org", "https://is1-ssl.mzstatic.com", "https://images.unsplash.com", "https://i.ytimg.com"],
+          mediaSrc: ["'self'", "https://*.audius.co", "https://*.mzstatic.com", "https://*.soundhelix.com", "blob:"],
+          frameSrc: ["'self'", "https://www.youtube.com", "https://w.soundcloud.com"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          fontSrc: ["'self'", "data:"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"],
+        },
+      },
+    })
+  );
+} else {
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'", "http://localhost:5173", "ws://localhost:5173"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "http://localhost:5173"],
+          connectSrc: ["'self'", "http://localhost:5173", "ws://localhost:5173", "https://api.themoviedb.org", "https://itunes.apple.com", "https://discoveryprovider.audius.co", "https://www.youtube.com", "https://*.supabase.co"],
+          imgSrc: ["'self'", "data:", "http://localhost:5173", "https://image.tmdb.org", "https://is1-ssl.mzstatic.com", "https://images.unsplash.com", "https://i.ytimg.com"],
+          mediaSrc: ["'self'", "https://*.audius.co", "https://*.mzstatic.com", "https://*.soundhelix.com", "blob:"],
+          frameSrc: ["'self'", "https://www.youtube.com", "https://w.soundcloud.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "http://localhost:5173"],
+          fontSrc: ["'self'", "data:", "http://localhost:5173"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"],
+        },
+      },
+    })
+  );
+}
 app.use(cors((request, callback) => {
   const origin = request.get('origin');
   const requestOrigin = `${request.protocol}://${request.get('host')}`;
