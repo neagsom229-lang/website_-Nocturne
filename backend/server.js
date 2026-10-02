@@ -112,35 +112,62 @@ async function authenticate(request, response, next) {
     request.path !== '/users/me';
   const publicMediaRead = request.method === 'GET' &&
     /^\/media\/[^/]+\/(?:likes|comments)$/.test(request.path);
-  const token = request.cookies[sessionCookie];
-  if (!token) {
+  
+  const sessionId = request.cookies[sessionCookie];
+  if (!sessionId) {
     if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
     return response.status(401).json({ error: 'Please log in to continue' });
   }
-  let claims;
-  try {
-    claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
-  } catch {
-    response.clearCookie(sessionCookie, cookieOptions);
-    return response.status(401).json({ error: 'Your session expired. Please log in again.' });
-  }
-  if (typeof claims !== 'object' || typeof claims.sub !== 'string' || typeof claims.jti !== 'string') {
-    return response.status(401).json({ error: 'Your session is invalid. Please log in again.' });
-  }
+
   const session = await db.prepare(`
-    SELECT 1 FROM auth_sessions WHERE id = $1 AND user_id = $2 AND expires_at > NOW()
-  `).get(claims.jti, claims.sub);
-  if (!session) return response.status(401).json({ error: 'Your session ended. Please log in again.' });
+    SELECT id, user_id AS "userId", refresh_token AS "refreshToken", access_token_expires_at AS "expiresAt"
+    FROM sessions WHERE id = $1
+  `).get(sessionId);
+
+  if (!session) {
+    response.clearCookie(sessionCookie, cookieOptions);
+    if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+    return response.status(401).json({ error: 'Please log in to continue' });
+  }
+
+  let userId = session.userId;
+  const now = new Date();
+  const expiresAt = new Date(session.expiresAt);
+
+  if (expiresAt <= now) {
+    try {
+      const { data, error } = await supabaseClient.auth.refreshSession({ refresh_token: session.refreshToken });
+      if (error || !data?.session) {
+        await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
+        response.clearCookie(sessionCookie, cookieOptions);
+        return response.status(401).json({ error: 'Your session expired. Please log in again.' });
+      }
+      const newExpiresAt = new Date(Date.now() + (data.session.expires_in || 3600) * 1000).toISOString();
+      await db.prepare(`
+        UPDATE sessions SET refresh_token = $1, access_token_expires_at = $2, last_used_at = NOW() WHERE id = $3
+      `).run(data.session.refresh_token, newExpiresAt, sessionId);
+      userId = data.user.id;
+    } catch {
+      await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
+      response.clearCookie(sessionCookie, cookieOptions);
+      return response.status(401).json({ error: 'Your session expired. Please log in again.' });
+    }
+  } else {
+    await db.prepare('UPDATE sessions SET last_used_at = NOW() WHERE id = $1').run(sessionId);
+  }
+
   const user = await db.prepare(`
     SELECT id, email, display_name AS "displayName", deleted_at AS "deletedAt"
     FROM users WHERE id = $1
-  `).get(claims.sub);
+  `).get(userId);
+
   if (!user || (user.deletedAt && !(
     request.method === 'GET' &&
-    request.path === `/users/${encodeURIComponent(claims.sub)}`
+    request.path === `/users/${encodeURIComponent(userId)}`
   ))) {
     return response.status(401).json({ error: 'Your account is no longer available' });
   }
+
   request.user = user;
   return next();
 }
@@ -316,9 +343,9 @@ app.use('/api/auth', authLimiter, createAuthRouter({
   sessionCookie,
   initializeUserData,
 }));
-app.post('/api/auth/register', authLimiter, (req, res) => res.redirect(307, '/api/auth/signup'));
-app.post('/api/auth/login', authLimiter, (req, res) => res.redirect(307, '/api/auth/signin'));
-app.post('/api/auth/logout', (req, res) => res.redirect(307, '/api/auth/signout'));
+app.all('/api/auth/register', (req, res) => res.status(410).json({ error: 'Endpoint deprecated. Please use /api/auth/signup' }));
+app.all('/api/auth/login', (req, res) => res.status(410).json({ error: 'Endpoint deprecated. Please use /api/auth/signin' }));
+app.all('/api/auth/logout', (req, res) => res.status(410).json({ error: 'Endpoint deprecated. Please use /api/auth/signout' }));
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
 app.use('/api/search', createSearchUnifiedRouter({ database: db }));

@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
 
-export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCookie, initializeUserData }) {
+export function createAuthRouter({ database, cookieOptions, sessionCookie, initializeUserData }) {
   const router = Router();
 
-  // Rate limiters per requirements (Verify 4)
   const signupLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 3,
@@ -33,7 +31,6 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
     message: { error: 'Too many password reset requests. Please try again later.' },
   });
 
-  // CSRF validation middleware on state-changing POST requests (Verify 4)
   function csrfProtection(request, response, next) {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
       const origin = request.get('origin');
@@ -54,7 +51,6 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
 
   router.use(csrfProtection);
 
-  // Sync user record: preserves legacy public.users.id and links supabase_uid (Verify 2)
   async function syncUserRecord(supabaseUser, extra = {}) {
     const supabaseUid = supabaseUser.id;
     const email = supabaseUser.email ?? '';
@@ -63,14 +59,13 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
     const avatarUrl = extra.avatarUrl || metadata.avatar_url || null;
     const emailVerified = Boolean(supabaseUser.email_confirmed_at || supabaseUser.confirmed_at || extra.emailVerified);
 
-    // Check if a legacy user with this email already exists in public.users
     let userId = supabaseUid;
     const existingLegacy = await database.prepare(`
       SELECT id FROM users WHERE lower(email) = lower($1) AND legacy_auth = true
     `).get(email);
 
     if (existingLegacy) {
-      userId = existingLegacy.id; // Keep legacy user ID so all foreign keys remain intact!
+      userId = existingLegacy.id;
     }
 
     await database.transaction(async (tx) => {
@@ -81,7 +76,7 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
           supabase_uid = COALESCE(users.supabase_uid, EXCLUDED.supabase_uid),
           email = EXCLUDED.email,
           display_name = COALESCE(users.display_name, EXCLUDED.display_name),
-          avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
+          avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url),
           email_verified = EXCLUDED.email_verified
       `).run(userId, supabaseUid, email, displayName, avatarUrl, emailVerified);
 
@@ -100,18 +95,18 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
     };
   }
 
-  async function issueNocturneSession(response, user) {
+  async function createServerSession(response, userId, sessionData) {
     const sessionId = randomUUID();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await database.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)')
-      .run(sessionId, user.id, expiresAt);
-    const token = jwt.sign(
-      { email: user.email, displayName: user.displayName },
-      jwtSecret,
-      { subject: user.id, jwtid: sessionId, expiresIn: '7d', issuer: 'bedroom-pop' }
-    );
-    // Strict cookie configuration (Verify 3)
-    response.cookie(sessionCookie, token, {
+    const refreshToken = sessionData.refresh_token;
+    const expiresIn = sessionData.expires_in || 3600;
+    const accessTokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+    await database.prepare(`
+      INSERT INTO sessions (id, user_id, refresh_token, access_token_expires_at, last_used_at)
+      VALUES ($1, $2, $3, $4, NOW())
+    `).run(sessionId, userId, refreshToken, accessTokenExpiresAt);
+
+    response.cookie(sessionCookie, sessionId, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -139,7 +134,7 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
       const { data, error } = await supabaseAdmin.auth.admin.createUser({
         email: normalizedEmail,
         password,
-        email_confirm: false, // Verify 5: does not auto-login
+        email_confirm: false,
         user_metadata: { full_name: displayName.trim() },
       });
 
@@ -168,18 +163,17 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
     try {
       // 1. Try Supabase Auth signin
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-      if (!error && data.user) {
-        // Verify email enforcement (Verify 5)
+      if (!error && data.user && data.session) {
         const emailConfirmed = Boolean(data.user.email_confirmed_at || data.user.confirmed_at);
         if (!emailConfirmed) {
           return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
         }
         const user = await syncUserRecord(data.user, { emailVerified: true });
-        await issueNocturneSession(response, user);
+        await createServerSession(response, user.id, data.session);
         return response.json({ user });
       }
 
-      // 2. Fallback to legacy user table check for backward compatibility & auto-migration
+      // 2. Blocker 1 Option A: Auto-migrate legacy user on first signin
       const legacyAccount = await database.prepare(`
         SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash", email_verified AS "emailVerified"
         FROM users WHERE lower(email) = $1 AND legacy_auth = true AND deleted_at IS NULL
@@ -190,6 +184,7 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
           return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
         }
 
+        // Create Supabase user for legacy account migration
         let supabaseUid = legacyAccount.id;
         try {
           const created = await supabaseAdmin.auth.admin.createUser({
@@ -203,14 +198,21 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
           }
         } catch {}
 
+        // Mark legacy_auth = false and update supabase_uid
+        await database.prepare('UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2').run(supabaseUid, legacyAccount.id);
+
+        const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (signinError || !signinData.session) {
+          return response.status(401).json({ error: 'That email and password do not match' });
+        }
+
         const user = {
-          id: legacyAccount.id, // preserves legacy ID (Verify 2)
+          id: legacyAccount.id,
           email: legacyAccount.email,
           displayName: legacyAccount.displayName,
           emailVerified: true,
         };
-        await database.prepare('UPDATE users SET supabase_uid = $1 WHERE id = $2').run(supabaseUid, legacyAccount.id);
-        await issueNocturneSession(response, user);
+        await createServerSession(response, user.id, signinData.session);
         return response.json({ user });
       }
 
@@ -261,9 +263,17 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
       if (error || !data?.user) {
         return response.status(401).json({ error: 'Invalid or expired token' });
       }
-      // OAuth signins auto-verify (Verify 5)
       const user = await syncUserRecord(data.user, { emailVerified: true });
-      await issueNocturneSession(response, user);
+      
+      // Get session tokens from exchange if present or generate session
+      const sessionRes = await supabaseClient.auth.setSession({ access_token, refresh_token: request.body.refresh_token || '' });
+      if (sessionRes.data?.session) {
+        await createServerSession(response, user.id, sessionRes.data.session);
+      } else {
+        // Fallback session
+        await createServerSession(response, user.id, { refresh_token: request.body.refresh_token || 'oauth-token', expires_in: 3600 });
+      }
+
       return response.json({ user });
     } catch (error) {
       console.error('Auth callback failed:', error);
@@ -272,14 +282,9 @@ export function createAuthRouter({ database, jwtSecret, cookieOptions, sessionCo
   });
 
   router.post('/signout', async (request, response) => {
-    const token = request.cookies[sessionCookie];
-    if (token) {
-      try {
-        const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
-        if (typeof claims === 'object' && typeof claims.jti === 'string') {
-          await database.prepare('DELETE FROM auth_sessions WHERE id = $1').run(claims.jti);
-        }
-      } catch {}
+    const sessionId = request.cookies[sessionCookie];
+    if (sessionId) {
+      await database.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
     }
     response.clearCookie(sessionCookie, cookieOptions);
     response.status(204).end();
