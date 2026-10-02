@@ -112,3 +112,61 @@ async function saveVideoPodcast(item: MediaItem): Promise<{ item: MediaItem; alr
 export async function deleteLibraryItem(id: string): Promise<void> {
   await request(`/api/library/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+export type UnifiedSearchOptions = {
+  q: string;
+  type?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type UnifiedSearchResultItem = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  thumbnail_url: string | null;
+  media_type: 'music' | 'podcast' | 'movie' | 'video_podcast';
+  source: 'audius' | 'itunes' | 'tmdb' | 'youtube';
+  stream_url: string | null;
+  external_url: string | null;
+  duration_seconds: number | null;
+  release_year: number | null;
+  rating: number | null;
+  description: string | null;
+};
+
+export type UnifiedSearchResponse = {
+  query: string;
+  type: string;
+  sort: string;
+  results: UnifiedSearchResultItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  sources: Record<string, { count: number; error: string | null }>;
+};
+
+export type SuggestionItem = {
+  id: string;
+  title: string;
+  media_type: 'music' | 'podcast' | 'movie' | 'video_podcast';
+  thumbnail_url: string | null;
+  source: string;
+};
+
+export async function searchUnified(options: UnifiedSearchOptions): Promise<UnifiedSearchResponse> {
+  const params = new URLSearchParams();
+  params.set('q', options.q);
+  if (options.type) params.set('type', options.type);
+  if (options.sort) params.set('sort', options.sort);
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
+  return request<UnifiedSearchResponse>(`/api/search/unified?${params}`);
+}
+
+export async function searchSuggest(query: string): Promise<SuggestionItem[]> {
+  const params = new URLSearchParams({ q: query });
+  const response = await request<{ suggestions: SuggestionItem[] }>(`/api/search/suggest?${params}`);
+  return response.suggestions;
+}

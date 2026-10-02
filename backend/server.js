@@ -19,6 +19,7 @@ import { createPlaylistsRouter } from './routes/playlists.js';
 import { createDiscoverRouter } from './routes/discover.js';
 import { createUsersRouter } from './routes/users.js';
 import { createSocialRouter } from './routes/social.js';
+import { createSearchUnifiedRouter } from './routes/searchUnified.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
@@ -358,6 +359,8 @@ app.post('/api/auth/logout', async (request, response) => {
 });
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
+app.use('/api/search', createSearchUnifiedRouter({ database: db }));
+console.info('Mounted unified search routes at /api/search before global auth middleware');
 app.use('/api', authenticate);
 app.use('/api/users', createUsersRouter({ database: db, authenticate }));
 app.use('/api', createSocialRouter({ database: db, authenticate }));

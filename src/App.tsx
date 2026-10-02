@@ -22,7 +22,7 @@ const DatingMatches = lazy(() => import('./routes/lowlight/DatingApp').then((mod
 const DatingChat = lazy(() => import('./routes/lowlight/DatingApp').then((module) => ({ default: module.DatingChat })));
 const DatingMyProfile = lazy(() => import('./routes/lowlight/DatingApp').then((module) => ({ default: module.DatingMyProfile })));
 const DatingPersonPage = lazy(() => import('./routes/lowlight/DatingApp').then((module) => ({ default: module.DatingPersonPage })));
-const SearchResultsPage = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.SearchResultsPage })));
+const SearchResultsPage = lazy(() => import('./routes/SearchResults').then((module) => ({ default: module.SearchResultsPage })));
 const MusicLibraryPage = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.MusicLibraryPage })));
 const MoviesPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MoviesPage })));
 const MovieDetailPage = lazy(() => import('./routes/Movies').then((module) => ({ default: module.MovieDetailPage })));

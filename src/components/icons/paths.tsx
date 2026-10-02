@@ -419,6 +419,14 @@ export const ICON_GLYPHS = {
       <path d="M8.4 4.4H4.8v3.8M15.6 4.4h3.6v3.8M4.8 15.8v3.8h3.6M19.2 15.8v3.8h-3.6" />
     </>
   ),
+  grid: (
+    <>
+      <rect x="4.4" y="4.4" width="6" height="6" rx="1" />
+      <rect x="13.6" y="4.4" width="6" height="6" rx="1" />
+      <rect x="4.4" y="13.6" width="6" height="6" rx="1" />
+      <rect x="13.6" y="13.6" width="6" height="6" rx="1" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_GLYPHS;
