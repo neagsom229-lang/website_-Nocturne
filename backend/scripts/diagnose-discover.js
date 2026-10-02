@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import express from 'express';
 import { db } from '../db.js';
 import { getTrendingMovies, normalizeMovie } from '../services/movieSearch.js';
 import { getRandomTrack } from '../services/audiusSearch.js';
+import { createDiscoverRouter } from '../routes/discover.js';
 
 async function diagnose() {
   console.log('--- DIAGNOSTIC: DISCOVER & DATABASE ---');
@@ -58,6 +60,34 @@ async function diagnose() {
     });
   } catch (error) {
     console.error('iTunes Podcast Search Check Failed:', error.message);
+  }
+
+  // Start the server on a scratch port, then call /api/discover/trending
+  try {
+    const app = express();
+    app.use('/api/discover', createDiscoverRouter({ database: db, authenticate: (req, res, next) => next() }));
+    await new Promise((resolve, reject) => {
+      const scratchServer = app.listen(0, async () => {
+        const port = scratchServer.address().port;
+        try {
+          const res = await fetch(`http://127.0.0.1:${port}/api/discover/trending`);
+          const data = await res.json();
+          console.info('=== /api/discover/trending response ===');
+          console.info('movies.length:',   data.movies?.length);
+          console.info('music.length:',    data.music?.length);
+          console.info('podcasts.length:', data.podcasts?.length);
+          console.info('music[0]:',        JSON.stringify(data.music?.[0], null, 2));
+          console.info('podcasts[0]:',     JSON.stringify(data.podcasts?.[0], null, 2));
+        } catch (err) {
+          console.error('Discover trending endpoint fetch failed:', err);
+        } finally {
+          scratchServer.close(resolve);
+        }
+      });
+      scratchServer.on('error', reject);
+    });
+  } catch (err) {
+    console.error('Scratch server diagnostic failed:', err);
   }
 
   // 4. search_cache check constraint check
