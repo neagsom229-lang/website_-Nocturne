@@ -145,13 +145,23 @@ export function MediaCard({
           : <span className="media-card__fallback" aria-hidden="true" />}
         {showTypeBadge ? <span className="media-card__badge">{mediaTypeLabel(media.media_type)}</span> : null}
         <div className="media-card__actions">
-          <button
-            className="media-card__play"
-            type="button"
-            aria-label={`Play ${media.title}`}
-            onClick={play}
-            disabled={!onPlay && !media.stream_url && !media.external_url && !movieHref}
-          ><Icon name="play" size={17} /></button>
+          {media.isPlayable !== false ? (
+            <button
+              className="media-card__play"
+              type="button"
+              aria-label={`Play ${media.title}`}
+              onClick={play}
+              disabled={!onPlay && !media.stream_url && !media.external_url && !movieHref}
+            ><Icon name="play" size={17} /></button>
+          ) : media.external_url ? (
+            <a
+              className="media-card__external-badge"
+              href={media.external_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Listen to ${media.title} externally`}
+            >External</a>
+          ) : null}
         </div>
       </div>
       <div className="media-card__copy">

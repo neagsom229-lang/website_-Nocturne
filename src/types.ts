@@ -44,6 +44,7 @@ export type DiscoveryMedia = {
   release_date?: string | null;
   rating?: number | null;
   duration_seconds?: number | null;
+  isPlayable?: boolean;
 };
 
 export type PublicPlaylistCard = {
