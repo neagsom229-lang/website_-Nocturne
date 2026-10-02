@@ -44,6 +44,61 @@ async function requestJson(url, provider, fetchImpl) {
   }
 }
 
+function isRssOrXml(url) {
+  if (!url || typeof url !== 'string') return false;
+  const lower = url.toLowerCase();
+  return lower.endsWith('.xml') || lower.endsWith('.rss') || lower.includes('/feed');
+}
+
+function normalizePodcastResults(results) {
+  if (!Array.isArray(results)) return [];
+  const seenIds = new Set();
+  const normalized = [];
+
+  for (const podcast of results) {
+    const id = podcast.collectionId ?? podcast.trackId;
+    const title = podcast.collectionName ?? podcast.trackName;
+    if (id === undefined || typeof title !== 'string') continue;
+    const stringId = String(id);
+    if (seenIds.has(stringId)) continue;
+
+    const previewUrl = podcast.previewUrl ?? podcast.episodeUrl ?? null;
+    const feedUrl = podcast.feedUrl ?? null;
+    const externalUrl = podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null;
+
+    const hasPreview = previewUrl && !isRssOrXml(previewUrl);
+
+    const allUrls = [previewUrl, feedUrl].filter(Boolean);
+    const onlyFeeds = allUrls.length > 0 && allUrls.every(isRssOrXml);
+    if (onlyFeeds && !externalUrl) {
+      continue;
+    }
+    if (!hasPreview && !externalUrl) {
+      continue;
+    }
+
+    seenIds.add(stringId);
+
+    const streamUrl = hasPreview ? previewUrl : (isRssOrXml(feedUrl) ? null : feedUrl);
+    const isPlayable = Boolean(streamUrl && !isRssOrXml(streamUrl));
+
+    normalized.push({
+      id: stringId,
+      title,
+      channel: podcast.artistName ?? 'Unknown channel',
+      thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
+      external_url: externalUrl,
+      stream_url: streamUrl,
+      release_date: podcast.releaseDate,
+      media_type: 'podcast',
+      source: 'itunes',
+      isPlayable,
+    });
+  }
+
+  return normalized;
+}
+
 function createProviders(fetchImpl) {
   return {
     async movies() {
@@ -66,8 +121,7 @@ function createProviders(fetchImpl) {
     async podcasts() {
       const terms = ['tech', 'news', 'comedy', 'business', 'true crime'];
       const term = terms[Math.floor(Math.random() * terms.length)];
-      const seenIds = new Set();
-      const allPodcasts = [];
+      let rawResults = [];
 
       try {
         const url = new URL('https://itunes.apple.com/search');
@@ -79,28 +133,13 @@ function createProviders(fetchImpl) {
         });
         const response = await requestJson(url, 'iTunes', fetchImpl);
         if (Array.isArray(response.results)) {
-          for (const podcast of response.results) {
-            const id = podcast.collectionId ?? podcast.trackId;
-            const title = podcast.collectionName ?? podcast.trackName;
-            if (id === undefined || typeof title !== 'string') continue;
-            const stringId = String(id);
-            if (seenIds.has(stringId)) continue;
-            seenIds.add(stringId);
-            allPodcasts.push({
-              id: stringId,
-              title,
-              channel: podcast.artistName ?? 'Unknown channel',
-              thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
-              external_url: podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null,
-              release_date: podcast.releaseDate,
-              media_type: 'podcast',
-              source: 'itunes',
-            });
-          }
+          rawResults = response.results;
         }
       } catch (error) {
         console.warn(`iTunes podcast search failed for term '${term}':`, error.message);
       }
+
+      const allPodcasts = normalizePodcastResults(rawResults);
 
       allPodcasts.sort((a, b) => {
         const dateA = Date.parse(a.release_date ?? 0);
@@ -118,16 +157,16 @@ function createProviders(fetchImpl) {
       return results;
     },
     async music() {
-      const searchTerms = ['lofi', 'chillhop', 'ambient', 'jazz', 'electronic'];
-      const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
       let mapped = [];
+      let source = 'trending';
 
       try {
-        const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
-        url.search = new URLSearchParams({ app_name: 'Nocturne', query: term, limit: '12' });
+        const url = new URL('https://discoveryprovider.audius.co/v1/tracks/trending');
+        url.search = new URLSearchParams({ app_name: 'Nocturne' });
         const response = await requestJson(url, 'Audius', fetchImpl);
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          mapped = response.data.flatMap((track) => {
+        const data = Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : []);
+        if (data.length > 0) {
+          mapped = data.flatMap((track) => {
             if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
             return [{
               id: track.id,
@@ -141,16 +180,40 @@ function createProviders(fetchImpl) {
           });
         }
       } catch (error) {
-        console.warn(`Audius search failed for term '${term}':`, error.message);
+        console.warn('Audius trending fetch failed:', error.message);
+      }
+
+      if (mapped.length === 0) {
+        source = 'search';
+        const searchTerms = ['lofi', 'chillhop', 'ambient', 'jazz', 'electronic'];
+        const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+        try {
+          const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
+          url.search = new URLSearchParams({ app_name: 'Nocturne', query: term, limit: '20' });
+          const response = await requestJson(url, 'Audius', fetchImpl);
+          const data = Array.isArray(response?.data) ? response.data : [];
+          if (data.length > 0) {
+            mapped = data.flatMap((track) => {
+              if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
+              return [{
+                id: track.id,
+                title: track.title,
+                artist: track.user?.name ?? 'Unknown artist',
+                thumbnail_url: track.artwork?.['480x480'] ?? track.artwork?.['150x150'] ?? null,
+                stream_url: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=Nocturne`,
+                media_type: 'music',
+                source: 'audius',
+              }];
+            });
+          }
+        } catch (error) {
+          console.warn(`Audius search failed for term '${term}':`, error.message);
+        }
       }
 
       const results = mapped.length > 0 ? mapped.slice(0, 12) : curatedSeeds.music;
-      console.info('[discover] music:', {
-        provider: 'audius',
-        query: term,
-        count: results.length,
-        usedFallback: mapped.length === 0,
-      });
+      const actualSource = mapped.length > 0 ? source : 'seed';
+      console.info('[discover] music source:', { source: actualSource, count: results.length });
       return results;
     },
     async musicRecommendations(query) {
@@ -190,8 +253,7 @@ function createProviders(fetchImpl) {
     },
     async newEpisodes() {
       const terms = ['tech', 'news', 'comedy', 'true crime', 'business'];
-      const seenIds = new Set();
-      const allEpisodes = [];
+      let allEpisodes = [];
 
       for (const term of terms) {
         try {
@@ -205,21 +267,9 @@ function createProviders(fetchImpl) {
           });
           const response = await requestJson(url, 'iTunes', fetchImpl);
           if (Array.isArray(response.results)) {
-            for (const episode of response.results) {
-              if (episode.trackId === undefined || typeof episode.trackName !== 'string') continue;
-              const stringId = String(episode.trackId);
-              if (seenIds.has(stringId)) continue;
-              seenIds.add(stringId);
-              allEpisodes.push({
-                id: stringId,
-                title: episode.trackName,
-                channel: episode.artistName ?? 'Unknown channel',
-                thumbnail_url: episode.artworkUrl600 ?? episode.artworkUrl100 ?? null,
-                stream_url: episode.episodeUrl ?? episode.previewUrl ?? null,
-                release_date: episode.releaseDate,
-                media_type: 'podcast',
-                source: 'itunes',
-              });
+            const normalized = normalizePodcastResults(response.results);
+            for (const ep of normalized) {
+              allEpisodes.push(ep);
             }
           }
         } catch (error) {
@@ -228,12 +278,20 @@ function createProviders(fetchImpl) {
       }
 
       if (allEpisodes.length > 0) {
-        allEpisodes.sort((a, b) => {
+        const seen = new Set();
+        const unique = [];
+        for (const ep of allEpisodes) {
+          if (!seen.has(ep.id)) {
+            seen.add(ep.id);
+            unique.push(ep);
+          }
+        }
+        unique.sort((a, b) => {
           const dateA = Date.parse(a.release_date ?? 0);
           const dateB = Date.parse(b.release_date ?? 0);
           return dateB - dateA;
         });
-        return allEpisodes.slice(0, 12);
+        return unique.slice(0, 12);
       }
       return curatedSeeds.podcasts;
     },
@@ -293,9 +351,14 @@ async function trendingFeed(database, providerSet) {
   if (cached) {
     try {
       const parsed = JSON.parse(cached.responseJson);
-      // Ensure cached entry also isn't missing music or podcasts
       if (!Array.isArray(parsed.music) || parsed.music.length === 0) parsed.music = curatedSeeds.music;
       if (!Array.isArray(parsed.podcasts) || parsed.podcasts.length === 0) parsed.podcasts = curatedSeeds.podcasts;
+      console.info('[discover] trending response:', {
+        movies: parsed.movies?.length ?? 0,
+        music: parsed.music?.length ?? 0,
+        podcasts: parsed.podcasts?.length ?? 0,
+        cacheHit: true,
+      });
       return parsed;
     } catch (error) {
       console.error('Invalid trending discovery cache entry:', error);
@@ -309,6 +372,13 @@ async function trendingFeed(database, providerSet) {
     ['podcasts', 'podcasts'],
     ['music', 'music'],
   ], providerSet);
+
+  console.info('[discover] trending response:', {
+    movies: result.movies?.length ?? 0,
+    music: result.music?.length ?? 0,
+    podcasts: result.podcasts?.length ?? 0,
+    cacheHit: false,
+  });
 
   if (!failed) {
     await database.prepare(`
