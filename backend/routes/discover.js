@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import { searchExternalMedia } from '../mediaSearch.js';
 import {
@@ -7,6 +10,16 @@ import {
 } from '../services/movieSearch.js';
 import { listPublicPlaylists } from './playlists.js';
 import { getCachedGenreRecommendations } from '../services/movieGenreCache.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const curatedSeedsPath = path.join(__dirname, '../data/curated-seeds.json');
+let curatedSeeds = { music: [], podcasts: [] };
+try {
+  curatedSeeds = JSON.parse(fs.readFileSync(curatedSeedsPath, 'utf8'));
+} catch (error) {
+  console.error('Failed to load curated seeds:', error);
+}
 
 const CACHE_TTLS = {
   trending: "INTERVAL '15 minutes'",
@@ -50,48 +63,100 @@ function createProviders(fetchImpl) {
         };
       });
     },
-    async podcasts(term = 'trending') {
-      const url = new URL('https://itunes.apple.com/search');
-      url.search = new URLSearchParams({
-        term,
-        entity: 'podcast',
-        media: 'podcast',
-        limit: '12',
-      });
-      const response = await requestJson(url, 'iTunes', fetchImpl);
-      if (!Array.isArray(response.results)) throw new Error('iTunes returned an invalid podcast response');
-      return response.results.flatMap((podcast) => {
-        const id = podcast.collectionId ?? podcast.trackId;
-        const title = podcast.collectionName ?? podcast.trackName;
-        if (id === undefined || typeof title !== 'string') return [];
-        return [{
-          id: String(id),
-          title,
-          channel: podcast.artistName ?? 'Unknown channel',
-          thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
-          external_url: podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null,
-          media_type: 'podcast',
-          source: 'itunes',
-        }];
-      });
+    async podcasts() {
+      const terms = ['tech', 'news', 'comedy', 'true crime', 'business'];
+      const seenIds = new Set();
+      const allPodcasts = [];
+
+      for (const term of terms) {
+        try {
+          const url = new URL('https://itunes.apple.com/search');
+          url.search = new URLSearchParams({
+            term,
+            entity: 'podcast',
+            media: 'podcast',
+            limit: '10',
+          });
+          const response = await requestJson(url, 'iTunes', fetchImpl);
+          if (Array.isArray(response.results)) {
+            for (const podcast of response.results) {
+              const id = podcast.collectionId ?? podcast.trackId;
+              const title = podcast.collectionName ?? podcast.trackName;
+              if (id === undefined || typeof title !== 'string') continue;
+              const stringId = String(id);
+              if (seenIds.has(stringId)) continue;
+              seenIds.add(stringId);
+              allPodcasts.push({
+                id: stringId,
+                title,
+                channel: podcast.artistName ?? 'Unknown channel',
+                thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
+                external_url: podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null,
+                media_type: 'podcast',
+                source: 'itunes',
+              });
+            }
+          }
+        } catch (error) {
+          // try next term
+        }
+      }
+      if (allPodcasts.length > 0) return allPodcasts.slice(0, 12);
+      return curatedSeeds.podcasts;
     },
     async music() {
-      const url = new URL('https://discoveryprovider.audius.co/v1/tracks/trending');
-      url.search = new URLSearchParams({ app_name: 'Nocturne', limit: '12' });
-      const response = await requestJson(url, 'Audius', fetchImpl);
-      if (!Array.isArray(response.data)) throw new Error('Audius returned an invalid trending response');
-      return response.data.flatMap((track) => {
-        if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
-        return [{
-          id: track.id,
-          title: track.title,
-          artist: track.user?.name ?? 'Unknown artist',
-          thumbnail_url: track.artwork?.['480x480'] ?? track.artwork?.['150x150'] ?? null,
-          stream_url: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=Nocturne`,
-          media_type: 'music',
-          source: 'audius',
-        }];
-      });
+      // 1. Try Audius actual trending endpoint
+      try {
+        const url = new URL('https://discoveryprovider.audius.co/v1/tracks/trending');
+        url.search = new URLSearchParams({ app_name: 'Nocturne', limit: '12' });
+        const response = await requestJson(url, 'Audius', fetchImpl);
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          const mapped = response.data.flatMap((track) => {
+            if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
+            return [{
+              id: track.id,
+              title: track.title,
+              artist: track.user?.name ?? 'Unknown artist',
+              thumbnail_url: track.artwork?.['480x480'] ?? track.artwork?.['150x150'] ?? null,
+              stream_url: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=Nocturne`,
+              media_type: 'music',
+              source: 'audius',
+            }];
+          });
+          if (mapped.length > 0) return mapped;
+        }
+      } catch (error) {
+        console.warn('Audius trending endpoint failed, trying search terms:', error.message);
+      }
+
+      // 2. Fall back to curated list of high-engagement search terms
+      const searchTerms = ['lofi', 'chillhop', 'jazz', 'electronic', 'ambient'];
+      const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+      try {
+        const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
+        url.search = new URLSearchParams({ app_name: 'Nocturne', query: term, limit: '12' });
+        const response = await requestJson(url, 'Audius', fetchImpl);
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          const mapped = response.data.flatMap((track) => {
+            if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
+            return [{
+              id: track.id,
+              title: track.title,
+              artist: track.user?.name ?? 'Unknown artist',
+              thumbnail_url: track.artwork?.['480x480'] ?? track.artwork?.['150x150'] ?? null,
+              stream_url: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=Nocturne`,
+              media_type: 'music',
+              source: 'audius',
+            }];
+          });
+          if (mapped.length > 0) return mapped;
+        }
+      } catch (error) {
+        console.warn('Audius fallback search failed:', error.message);
+      }
+
+      // 3. Final fallback to curated seeds
+      return curatedSeeds.music;
     },
     async musicRecommendations(query) {
       const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
@@ -129,33 +194,53 @@ function createProviders(fetchImpl) {
       });
     },
     async newEpisodes() {
-      const url = new URL('https://itunes.apple.com/search');
-      url.search = new URLSearchParams({
-        term: 'podcast',
-        entity: 'podcastEpisode',
-        media: 'podcast',
-        limit: '50',
-        sort: 'recent',
-      });
-      const response = await requestJson(url, 'iTunes', fetchImpl);
-      if (!Array.isArray(response.results)) throw new Error('iTunes returned an invalid episode response');
-      const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-      return response.results
-        .filter((episode) => Number.isFinite(Date.parse(episode.releaseDate)) && Date.parse(episode.releaseDate) >= cutoff)
-        .slice(0, 12)
-        .flatMap((episode) => {
-          if (episode.trackId === undefined || typeof episode.trackName !== 'string') return [];
-          return [{
-            id: String(episode.trackId),
-            title: episode.trackName,
-            channel: episode.artistName ?? 'Unknown channel',
-            thumbnail_url: episode.artworkUrl600 ?? episode.artworkUrl100 ?? null,
-            stream_url: episode.episodeUrl ?? episode.previewUrl ?? null,
-            release_date: episode.releaseDate,
-            media_type: 'podcast',
-            source: 'itunes',
-          }];
+      const terms = ['tech', 'news', 'comedy', 'true crime', 'business'];
+      const seenIds = new Set();
+      const allEpisodes = [];
+
+      for (const term of terms) {
+        try {
+          const url = new URL('https://itunes.apple.com/search');
+          url.search = new URLSearchParams({
+            term,
+            entity: 'podcastEpisode',
+            media: 'podcast',
+            limit: '20',
+            sort: 'recent',
+          });
+          const response = await requestJson(url, 'iTunes', fetchImpl);
+          if (Array.isArray(response.results)) {
+            for (const episode of response.results) {
+              if (episode.trackId === undefined || typeof episode.trackName !== 'string') continue;
+              const stringId = String(episode.trackId);
+              if (seenIds.has(stringId)) continue;
+              seenIds.add(stringId);
+              allEpisodes.push({
+                id: stringId,
+                title: episode.trackName,
+                channel: episode.artistName ?? 'Unknown channel',
+                thumbnail_url: episode.artworkUrl600 ?? episode.artworkUrl100 ?? null,
+                stream_url: episode.episodeUrl ?? episode.previewUrl ?? null,
+                release_date: episode.releaseDate,
+                media_type: 'podcast',
+                source: 'itunes',
+              });
+            }
+          }
+        } catch (error) {
+          // try next term
+        }
+      }
+
+      if (allEpisodes.length > 0) {
+        allEpisodes.sort((a, b) => {
+          const dateA = Date.parse(a.release_date ?? 0);
+          const dateB = Date.parse(b.release_date ?? 0);
+          return dateB - dateA;
         });
+        return allEpisodes.slice(0, 12);
+      }
+      return curatedSeeds.podcasts;
     },
     async recommendations(query) {
       const items = await searchExternalMedia(query, 'podcast', { fetchImpl });
@@ -183,12 +268,25 @@ async function resolveProviderResults(entries, providerSet) {
   let failed = false;
   settled.forEach((entry, index) => {
     const key = entries[index][1];
-    if (entry.status === 'fulfilled') result[key] = entry.value;
-    else {
+    if (entry.status === 'fulfilled') {
+      result[key] = entry.value;
+    } else {
       failed = true;
       console.error(`Discovery ${key} provider failed:`, entry.reason);
     }
   });
+
+  // Ensure music and podcasts are never empty
+  if (!Array.isArray(result.music) || result.music.length === 0) {
+    result.music = curatedSeeds.music;
+  }
+  if (!Array.isArray(result.podcasts) || result.podcasts.length === 0) {
+    result.podcasts = curatedSeeds.podcasts;
+  }
+  if (!Array.isArray(result.movies) || result.movies.length === 0) {
+    result.movies = [];
+  }
+
   return { result, failed };
 }
 
@@ -199,7 +297,11 @@ async function trendingFeed(database, providerSet) {
   `).get();
   if (cached) {
     try {
-      return JSON.parse(cached.responseJson);
+      const parsed = JSON.parse(cached.responseJson);
+      // Ensure cached entry also isn't missing music or podcasts
+      if (!Array.isArray(parsed.music) || parsed.music.length === 0) parsed.music = curatedSeeds.music;
+      if (!Array.isArray(parsed.podcasts) || parsed.podcasts.length === 0) parsed.podcasts = curatedSeeds.podcasts;
+      return parsed;
     } catch (error) {
       console.error('Invalid trending discovery cache entry:', error);
       await database.prepare(
@@ -212,6 +314,7 @@ async function trendingFeed(database, providerSet) {
     ['podcasts', 'podcasts'],
     ['music', 'music'],
   ], providerSet);
+
   if (!failed) {
     await database.prepare(`
       INSERT INTO search_cache (query, type, sort, response_json, expires_at)
@@ -258,6 +361,9 @@ export function createDiscoverRouter({
     };
     if (settled[0].status === 'rejected') console.error('New movie releases provider failed:', settled[0].reason);
     if (settled[1].status === 'rejected') console.error('New podcast releases provider failed:', settled[1].reason);
+    if (!Array.isArray(result.podcasts) || result.podcasts.length === 0) {
+      result.podcasts = curatedSeeds.podcasts;
+    }
     if (settled.every((entry) => entry.status === 'fulfilled')) {
       await database.prepare(`
         INSERT INTO search_cache (query, type, sort, response_json, expires_at)

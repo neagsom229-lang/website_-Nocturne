@@ -191,3 +191,37 @@ test('for-you delegates authentication and rejects anonymous requests', async ()
     await app.close();
   }
 });
+
+test('trending discovery smoke test asserts non-empty movies, music, and podcasts when available or failed', async () => {
+  const appAvailable = await startRouter({
+    movies: async () => [{ id: 'm1', title: 'Movie 1', media_type: 'movie' }],
+    podcasts: async () => [{ id: 'p1', title: 'Podcast 1', media_type: 'podcast' }],
+    music: async () => [{ id: 'mu1', title: 'Music 1', media_type: 'music' }],
+  });
+  try {
+    const res = await appAvailable.fetch('/api/discover/trending');
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(data.movies.length > 0);
+    assert.ok(data.music.length > 0);
+    assert.ok(data.podcasts.length > 0);
+  } finally {
+    await appAvailable.close();
+  }
+
+  const appFailed = await startRouter({
+    movies: async () => { throw new Error('fail'); },
+    podcasts: async () => { throw new Error('fail'); },
+    music: async () => { throw new Error('fail'); },
+  });
+  try {
+    const res = await appFailed.fetch('/api/discover/trending');
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(Array.isArray(data.movies));
+    assert.ok(data.music.length > 0, 'music fallback seeds should appear');
+    assert.ok(data.podcasts.length > 0, 'podcast fallback seeds should appear');
+  } finally {
+    await appFailed.close();
+  }
+});

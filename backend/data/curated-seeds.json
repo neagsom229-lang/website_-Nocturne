@@ -1,0 +1,42 @@
+{
+  "music": [
+    {
+      "id": "audius-seed-1",
+      "title": "Sunset Lofi Beats",
+      "artist": "Audius Curated",
+      "thumbnail_url": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400",
+      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/seed-1/stream?app_name=Nocturne",
+      "media_type": "music",
+      "source": "audius"
+    },
+    {
+      "id": "audius-seed-2",
+      "title": "Midnight Study Session",
+      "artist": "Audius Curated",
+      "thumbnail_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400",
+      "stream_url": "https://discoveryprovider.audius.co/v1/tracks/seed-2/stream?app_name=Nocturne",
+      "media_type": "music",
+      "source": "audius"
+    }
+  ],
+  "podcasts": [
+    {
+      "id": "itunes-seed-1",
+      "title": "Daily Tech Briefing",
+      "channel": "iTunes Curated",
+      "thumbnail_url": "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400",
+      "stream_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "media_type": "podcast",
+      "source": "itunes"
+    },
+    {
+      "id": "itunes-seed-2",
+      "title": "Future of Design",
+      "channel": "iTunes Curated",
+      "thumbnail_url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400",
+      "stream_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      "media_type": "podcast",
+      "source": "itunes"
+    }
+  ]
+}
