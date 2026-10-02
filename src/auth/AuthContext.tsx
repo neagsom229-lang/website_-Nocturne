@@ -30,7 +30,9 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
       typeof payload === 'object' && payload !== null && 'error' in payload && typeof payload.error === 'string'
         ? payload.error
         : `Authentication request failed (${response.status})`;
-    throw new Error(message);
+    const error = new Error(message);
+    (error as any).status = response.status;
+    throw error;
   }
   return payload as T;
 }
@@ -51,7 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           }
           return;
-        } catch (error) {
+        } catch (error: any) {
+          const status = error?.status;
+          if (status && status >= 400 && status < 500) {
+            if (active) {
+              setUser(null);
+              setLoading(false);
+            }
+            return;
+          }
           if (attempt < retries) {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
           } else {
@@ -93,4 +103,3 @@ export function useAuth() {
   if (!value) throw new Error('useAuth must be used inside AuthProvider');
   return value;
 }
-

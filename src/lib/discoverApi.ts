@@ -11,11 +11,17 @@ async function request<T>(path: string, retries = 3, delayMs = 500): Promise<T> 
           && 'error' in payload && typeof payload.error === 'string'
           ? payload.error
           : `Request failed (${response.status})`;
-        throw new Error(message);
+        const error: any = new Error(message);
+        error.status = response.status;
+        throw error;
       }
       return payload as T;
-    } catch (error) {
+    } catch (error: any) {
       lastError = error;
+      const status = error?.status;
+      if (status && status >= 400 && status < 500) {
+        break;
+      }
       if (attempt < retries) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
