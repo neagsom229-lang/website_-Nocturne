@@ -22,6 +22,8 @@ import { createUsersRouter } from './routes/users.js';
 import { createSocialRouter } from './routes/social.js';
 import { createSearchUnifiedRouter } from './routes/searchUnified.js';
 
+import { createAuthRouter } from './routes/authSupabase.js';
+
 const app = express();
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
@@ -100,22 +102,6 @@ const cookieOptions = {
   sameSite: 'lax',
   path: '/',
 };
-
-async function issueSession(response, user) {
-  const sessionId = randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  await db.prepare('INSERT INTO auth_sessions (id, user_id, expires_at) VALUES ($1, $2, $3)')
-    .run(sessionId, user.id, expiresAt);
-  const token = jwt.sign(
-    { email: user.email, displayName: user.displayName },
-    jwtSecret,
-    { subject: user.id, jwtid: sessionId, expiresIn: '7d', issuer: 'bedroom-pop' },
-  );
-  response.cookie(sessionCookie, token, {
-    ...cookieOptions,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-}
 
 async function authenticate(request, response, next) {
   const publicPlaylistRead = request.method === 'GET' && (
@@ -323,96 +309,16 @@ const searchLimiter = rateLimit({
   message: { error: 'Too many searches. Please try again in a little while.' },
 });
 
-app.post('/api/auth/register', authLimiter, async (request, response) => {
-  const { displayName, email, password } = request.body ?? {};
-  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
-  if (
-    typeof displayName !== 'string' ||
-    !displayName.trim() ||
-    displayName.trim().length > 80 ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
-    normalizedEmail.length > 254 ||
-    typeof password !== 'string' ||
-    password.length < 8 ||
-    password.length > 128
-  ) {
-    return response.status(400).json({
-      error: 'Provide a name, valid email, and password between 8 and 128 characters',
-    });
-  }
-
-  try {
-    const user = {
-      id: randomUUID(),
-      displayName: displayName.trim(),
-      email: normalizedEmail,
-    };
-    const passwordHash = await bcrypt.hash(password, 12);
-    await db.transaction(async (tx) => {
-        await tx.prepare(`
-          INSERT INTO users (id, display_name, email, password_hash)
-          VALUES ($1, $2, $3, $4)
-        `).run(user.id, user.displayName, user.email, passwordHash);
-        await initializeUserData(user, tx);
-      });
-      await issueSession(response, user);
-    return response.status(201).json({ user });
-  } catch (error) {
-    if (error?.code === '23505') {
-      return response.status(409).json({ error: 'An account with that email already exists' });
-    }
-    console.error('Account registration failed:', error);
-    return response.status(500).json({ error: 'Could not create your account right now' });
-  }
-});
-
-app.post('/api/auth/login', authLimiter, async (request, response) => {
-  const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
-  const password = typeof request.body?.password === 'string' ? request.body.password : '';
-  if (!email || !password || email.length > 254 || password.length > 128) {
-    return response.status(400).json({ error: 'Enter your email and password' });
-  }
-
-  try {
-    const account = await db.prepare(`
-      SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash"
-      FROM users WHERE lower(email) = $1 AND deleted_at IS NULL
-    `).get(email);
-    const validPassword = account?.passwordHash
-      ? await bcrypt.compare(password, account.passwordHash)
-      : false;
-    if (!account || !validPassword) {
-      return response.status(401).json({ error: 'That email and password do not match' });
-    }
-    const user = { id: account.id, email: account.email, displayName: account.displayName };
-    await issueSession(response, user);
-    return response.json({ user });
-  } catch (error) {
-    console.error('Account login failed:', error);
-    return response.status(500).json({ error: 'Could not sign you in right now' });
-  }
-});
-
-app.get('/api/auth/me', authenticate, async (request, response) => {
-  response.json({ user: request.user });
-});
-
-app.post('/api/auth/logout', async (request, response) => {
-  const token = request.cookies[sessionCookie];
-  if (token) {
-    try {
-      const claims = jwt.verify(token, jwtSecret, { issuer: 'bedroom-pop' });
-      if (typeof claims === 'object' && typeof claims.jti === 'string') {
-        await db.prepare('DELETE FROM auth_sessions WHERE id = $1').run(claims.jti);
-      }
-    } catch {
-      response.clearCookie(sessionCookie, cookieOptions);
-      return response.status(204).end();
-    }
-  }
-  response.clearCookie(sessionCookie, cookieOptions);
-  response.status(204).end();
-});
+app.use('/api/auth', authLimiter, createAuthRouter({
+  database: db,
+  jwtSecret,
+  cookieOptions,
+  sessionCookie,
+  initializeUserData,
+}));
+app.post('/api/auth/register', authLimiter, (req, res) => res.redirect(307, '/api/auth/signup'));
+app.post('/api/auth/login', authLimiter, (req, res) => res.redirect(307, '/api/auth/signin'));
+app.post('/api/auth/logout', (req, res) => res.redirect(307, '/api/auth/signout'));
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
 app.use('/api/search', createSearchUnifiedRouter({ database: db }));
