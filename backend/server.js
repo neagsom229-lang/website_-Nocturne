@@ -39,7 +39,8 @@ app.disable('x-powered-by');
 // In development (NODE_ENV !== 'production'), a permissive CSP is applied to support Vite HMR (@vite/client),
 // inline scripts, eval, and local dev server origins.
 // In production (NODE_ENV === 'production'), a strict but functional CSP is applied via helmet restricting
-// scripts, connections, images, media, and frames to trusted domains.
+// scripts, connections, images, and frames to trusted domains. Note that mediaSrc includes 'https:'
+// intentionally to support arbitrary podcast audio CDNs (e.g. pdst.fm, podtrac.com, omny.fm, etc.) across RSS feeds.
 if (process.env.NODE_ENV === 'production') {
   app.use(
     helmet({
@@ -49,7 +50,7 @@ if (process.env.NODE_ENV === 'production') {
           scriptSrc: ["'self'", "https://www.youtube.com"],
           connectSrc: ["'self'", "https://api.themoviedb.org", "https://itunes.apple.com", "https://discoveryprovider.audius.co", "https://www.youtube.com", "https://*.supabase.co"],
           imgSrc: ["'self'", "data:", "https://image.tmdb.org", "https://is1-ssl.mzstatic.com", "https://images.unsplash.com", "https://i.ytimg.com"],
-          mediaSrc: ["'self'", "https://*.audius.co", "https://*.mzstatic.com", "https://*.soundhelix.com", "blob:"],
+          mediaSrc: ["'self'", "blob:", "https:"],
           frameSrc: ["'self'", "https://www.youtube.com", "https://w.soundcloud.com"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           fontSrc: ["'self'", "data:"],
