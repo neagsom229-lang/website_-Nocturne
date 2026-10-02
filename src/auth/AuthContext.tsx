@@ -41,10 +41,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void authRequest<{ user: AuthUser }>('/api/auth/me')
-      .then(({ user: currentUser }) => { if (active) setUser(currentUser); })
-      .catch(() => { if (active) setUser(null); })
-      .finally(() => { if (active) setLoading(false); });
+    async function checkAuth(retries = 3, delayMs = 500) {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        if (!active) return;
+        try {
+          const { user: currentUser } = await authRequest<{ user: AuthUser }>('/api/auth/me');
+          if (active) {
+            setUser(currentUser);
+            setLoading(false);
+          }
+          return;
+        } catch (error) {
+          if (attempt < retries) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          } else {
+            if (active) {
+              setUser(null);
+              setLoading(false);
+            }
+          }
+        }
+      }
+    }
+    void checkAuth();
     return () => { active = false; };
   }, []);
 

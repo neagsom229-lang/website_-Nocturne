@@ -1074,12 +1074,13 @@ app.use((error, _request, response, _next) => {
 
 await initializeDatabase();
 
-const server = app.listen(port);
+const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
+const server = app.listen(port, host);
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     if (port === 3000) {
       console.warn('Port 3000 in use; falling back to 3001. Kill stale Node process if this is unexpected.');
-      server.listen(3001);
+      server.listen(3001, host);
     } else {
       console.error(`Port ${port} in use.`);
       process.exit(1);
@@ -1091,5 +1092,5 @@ server.on('error', (err) => {
 });
 server.on('listening', () => {
   const activePort = server.address()?.port ?? port;
-  console.log(`BEDROOM POP server listening on http://localhost:${activePort}`);
+  console.log(`BEDROOM POP server listening on http://${host}:${activePort}`);
 });

@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: false,
       proxy: {
-        '/api': `http://localhost:${port}`,
+        '/api': `http://127.0.0.1:${port}`,
       },
     },
     build: {
