@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { searchMovies, normalizeMovie } from '../services/movieSearch.js';
 import { searchExternalMedia, normalizeVideoPodcastResults } from '../mediaSearch.js';
+import { recordCacheWriteFailure } from '../services/cacheMetrics.js';
 
 const CACHE_TTL = "INTERVAL '1 hour'";
 const SUGGEST_CACHE_TTL = "INTERVAL '10 minutes'";
@@ -281,7 +282,7 @@ export function createSearchUnifiedRouter({ database }) {
             expires_at = excluded.expires_at
         `).run(cacheKey, type, sort, JSON.stringify(payload));
       } catch (error) {
-        console.error('Search cache write error:', error);
+        recordCacheWriteFailure(error);
       }
     }
 

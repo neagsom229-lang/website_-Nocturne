@@ -12,6 +12,7 @@ import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { db, initializeDatabase, initializeUserData } from './db.js';
 import { MediaSearchError, searchExternalMedia } from './mediaSearch.js';
+import { getCacheStats } from './services/cacheMetrics.js';
 import musicRouter from './routes/music.js';
 import moviesRouter from './routes/movies.js';
 import podcastsRouter from './routes/podcasts.js';
@@ -249,6 +250,15 @@ async function listJournalEntries(userId, mood = null) {
 
 app.get('/api/health', (_request, response) => {
   response.status(200).json({ status: 'ok' });
+});
+
+app.get('/api/admin/cache-stats', (request, response) => {
+  const adminToken = process.env.ADMIN_TOKEN;
+  const headerToken = request.headers['x-admin-token'];
+  if (!adminToken || headerToken !== adminToken) {
+    return response.status(401).json({ error: 'Unauthorized: valid ADMIN_TOKEN required' });
+  }
+  return response.json(getCacheStats());
 });
 
 const authLimiter = rateLimit({

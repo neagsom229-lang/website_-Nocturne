@@ -1,4 +1,5 @@
 import { getMoviesByGenre, normalizeMovie } from './movieSearch.js';
+import { recordCacheWriteFailure } from './cacheMetrics.js';
 
 const GENRE_CACHE_TTL = "INTERVAL '24 hours'";
 
@@ -44,12 +45,16 @@ export async function refreshGenreRecommendations(database, genreId) {
       source: 'tmdb',
     };
   });
-  await database.prepare(`
-    INSERT INTO search_cache (query, type, sort, response_json, expires_at)
-    VALUES ($1, 'movie', 'relevance', $2, NOW() + ${GENRE_CACHE_TTL})
-    ON CONFLICT (query, type, sort) DO UPDATE SET
-      response_json = excluded.response_json,
-      expires_at = excluded.expires_at
-  `).run(genreCacheKey(genreId), JSON.stringify(result));
+  try {
+    await database.prepare(`
+      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+      VALUES ($1, 'movie', 'relevance', $2, NOW() + ${GENRE_CACHE_TTL})
+      ON CONFLICT (query, type, sort) DO UPDATE SET
+        response_json = excluded.response_json,
+        expires_at = excluded.expires_at
+    `).run(genreCacheKey(genreId), JSON.stringify(result));
+  } catch (error) {
+    recordCacheWriteFailure(error);
+  }
   return result;
 }

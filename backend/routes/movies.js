@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../db.js';
+import { recordCacheWriteFailure } from '../services/cacheMetrics.js';
 import {
   getMovieDetails,
   getMovieVideos,
@@ -33,13 +34,17 @@ async function cachedTmdb(query, load) {
   }
 
   const payload = await load();
-  await db.prepare(`
-    INSERT INTO search_cache (query, type, sort, response_json, expires_at)
-    VALUES ($1, 'movie', 'relevance', $2, NOW() + ${CACHE_TTL})
-    ON CONFLICT (query, type, sort) DO UPDATE SET
-      response_json = excluded.response_json,
-      expires_at = excluded.expires_at
-  `).run(query, JSON.stringify(payload));
+  try {
+    await db.prepare(`
+      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+      VALUES ($1, 'movie', 'relevance', $2, NOW() + ${CACHE_TTL})
+      ON CONFLICT (query, type, sort) DO UPDATE SET
+        response_json = excluded.response_json,
+        expires_at = excluded.expires_at
+    `).run(query, JSON.stringify(payload));
+  } catch (error) {
+    recordCacheWriteFailure(error);
+  }
   return payload;
 }
 
