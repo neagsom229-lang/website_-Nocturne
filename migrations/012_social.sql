@@ -1,13 +1,9 @@
 ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS display_name TEXT,
   ADD COLUMN IF NOT EXISTS bio TEXT,
   ADD COLUMN IF NOT EXISTS avatar_url TEXT,
   ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-
-ALTER TABLE users
-  ALTER COLUMN is_public SET DEFAULT false;
-
-UPDATE users SET is_public = false;
 
 ALTER TABLE users
   DROP CONSTRAINT IF EXISTS users_display_name_length_check,

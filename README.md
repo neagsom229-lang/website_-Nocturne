@@ -61,6 +61,9 @@ npm run build
 npm test
 ```
 
-The production API integration test uses `TEST_DATABASE_URL`, or falls back to
-`DATABASE_URL`, and expects the PostgreSQL schema to be migrated. GitHub Actions
-runs the integration suite against a temporary PostgreSQL service.
+The production API integration test requires `TEST_DATABASE_URL` and expects
+the PostgreSQL schema to be migrated; it never falls back to `DATABASE_URL`.
+The migration 012 test uses a temporary isolated schema in that test database
+to verify the migration starts without `users.deleted_at` and can run twice.
+GitHub Actions runs the integration suite against a temporary PostgreSQL
+service.

@@ -8,7 +8,18 @@ import test from 'node:test';
 import { getSslConfig } from '../backend/dbConfig.js';
 
 const { Pool } = pg;
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+const databaseUrl = process.env.TEST_DATABASE_URL;
+const databaseHost = (url) => {
+  if (!url) return 'not configured';
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'invalid URL';
+  }
+};
+
+console.info(`[integration tests] TEST_DATABASE_URL host: ${databaseHost(databaseUrl)}`);
+console.info(`[integration tests] DATABASE_URL host (ignored): ${databaseHost(process.env.DATABASE_URL)}`);
 
 const password = 'a-night-in-the-listening-room';
 
@@ -24,7 +35,7 @@ async function availablePort() {
 }
 
 test('production server serves the app and isolates authenticated feature data', {
-  skip: databaseUrl ? false : 'Set TEST_DATABASE_URL to a migrated PostgreSQL database',
+  skip: databaseUrl ? false : 'Set TEST_DATABASE_URL to a migrated PostgreSQL test database',
 }, async (context) => {
   const parsedDatabaseUrl = new URL(databaseUrl);
   const database = new Pool({
