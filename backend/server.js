@@ -69,7 +69,7 @@ if (process.env.NODE_ENV === 'production') {
           defaultSrc: ["'self'", "http://localhost:5173", "ws://localhost:5173"],
           scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "http://localhost:5173"],
           connectSrc: ["'self'", "http://localhost:5173", "ws://localhost:5173", "https://api.themoviedb.org", "https://itunes.apple.com", "https://discoveryprovider.audius.co", "https://www.youtube.com", "https://*.supabase.co"],
-          imgSrc: ["'self'", "data:", "http://localhost:5173", "https://image.tmdb.org", "https://is1-ssl.mzstatic.com", "https://images.unsplash.com", "https://i.ytimg.com"],
+          imgSrc: ["'self'", "data:", "http://localhost:5173", "https://image.tmdb.org", "https://is1-ssl.mzstatic.com", "https://is2-ssl.mzstatic.com", "https://is3-ssl.mzstatic.com", "https://is4-ssl.mzstatic.com", "https://is5-ssl.mzstatic.com", "https://*.mzstatic.com", "https://images.unsplash.com", "https://i.ytimg.com", "https://*.audius.co", "https://*.monophonic.digital", "https://*.open-audio-validator.com", "https:"],
           mediaSrc: ["'self'", "https://*.audius.co", "https://*.mzstatic.com", "https://*.soundhelix.com", "blob:"],
           frameSrc: ["'self'", "https://www.youtube.com", "https://w.soundcloud.com"],
           styleSrc: ["'self'", "'unsafe-inline'", "http://localhost:5173"],
@@ -1064,12 +1064,20 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.use((error, _request, response, _next) => {
-  if (error instanceof SyntaxError && 'body' in error) {
-    return response.status(400).json({ error: 'Request body must be valid JSON' });
+app.use((err, req, res, next) => {
+  console.error('[express] unhandled error:', {
+    url: req.originalUrl,
+    method: req.method,
+    message: err.message,
+    stack: err.stack
+  });
+  if (res.headersSent) {
+    return next(err);
   }
-  console.error(error);
-  return response.status(500).json({ error: 'Unexpected server error' });
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({ error: 'Request body must be valid JSON' });
+  }
+  return res.status(500).json({ error: 'internal_error', message: err.message });
 });
 
 await initializeDatabase();
