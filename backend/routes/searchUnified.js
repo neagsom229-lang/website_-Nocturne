@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { searchMovies, normalizeMovie } from '../services/movieSearch.js';
-import { searchExternalMedia, normalizeVideoPodcastResults } from '../mediaSearch.js';
+import { searchTvShows } from '../services/tvSearch.js';
+import { searchYouTubeVideos } from '../services/youtubeSearch.js';
+import { searchAudiobooks } from '../services/librivoxSearch.js';
+import { searchDeezerMusic } from '../services/deezerSearch.js';
 import { recordCacheWriteFailure } from '../services/cacheMetrics.js';
 
-const CACHE_TTL = "INTERVAL '1 hour'";
-const SUGGEST_CACHE_TTL = "INTERVAL '10 minutes'";
 const APP_NAME = 'Nocturne';
 const AUDIUS_API = 'https://discoveryprovider.audius.co/v1';
+const SUGGEST_CACHE_TTL = "INTERVAL '10 minutes'";
 
-// Sliding window rate limiter for search analytics: max 60 inserts per minute across all users
 let analyticsTimestamps = [];
 function shouldLogAnalytics() {
   const now = Date.now();
@@ -32,7 +33,6 @@ async function fetchJsonWithTimeout(url, provider, fetchImpl = fetch, timeoutMs 
   }
 }
 
-// Audius endpoint matching working service: https://discoveryprovider.audius.co/v1/tracks/search
 async function fetchAudius(query, fetchImpl = fetch) {
   const url = new URL(`${AUDIUS_API}/tracks/search`);
   url.search = new URLSearchParams({ app_name: APP_NAME, query, limit: '20' });
@@ -111,60 +111,16 @@ async function fetchTmdbMovies(query) {
   });
 }
 
-/**
- * YouTube Quota Strategy:
- * YouTube fires ONLY when type === 'video_podcast' (explicit user intent).
- * For type === 'all', do NOT call YouTube. Video results appear only when the user selects the Video tab.
- * This is predictable and quota-safe.
- */
-async function fetchVideoPodcasts(query, type, fetchImpl = fetch) {
-  const itunesPromise = fetchJsonWithTimeout(
-    new URL(`https://itunes.apple.com/search?${new URLSearchParams({ term: query, entity: 'podcastEpisode', media: 'podcast', limit: '20' })}`),
-    'itunes',
-    fetchImpl,
-  ).then((data) => normalizeVideoPodcastResults(data.results)).catch(() => []);
-
-  const shouldQueryYouTube = type === 'video_podcast';
-  const ytPromise = shouldQueryYouTube
-    ? searchExternalMedia(`${query} podcast video`, 'video', {
-        apiKey: process.env.YOUTUBE_API_KEY,
-        fetchImpl,
-      }).catch(() => [])
-    : Promise.resolve([]);
-
-  const [itunesRes, ytRes] = await Promise.all([itunesPromise, ytPromise]);
-
-  const mappedItunes = itunesRes.map((item) => ({
-    id: item.id,
-    title: item.title,
-    subtitle: item.channel,
-    thumbnail_url: item.thumbnail_url,
-    media_type: 'video_podcast',
-    source: 'itunes',
-    stream_url: item.stream_url,
-    external_url: item.external_url,
-    duration_seconds: item.duration_seconds,
-    release_year: null,
-    rating: null,
-    description: null,
-  }));
-
-  const mappedYt = ytRes.map((item) => ({
-    id: item.externalId,
-    title: item.title,
-    subtitle: item.artist ?? 'YouTube Video',
-    thumbnail_url: item.thumbnailUrl,
-    media_type: 'video_podcast',
-    source: 'youtube',
-    stream_url: item.streamUrl,
-    external_url: item.externalUrl,
-    duration_seconds: null,
-    release_year: null,
-    rating: null,
-    description: null,
-  }));
-
-  return [...mappedItunes, ...mappedYt];
+async function measureProvider(providerName, fetchFn) {
+  const start = Date.now();
+  try {
+    const results = await fetchFn();
+    const latencyMs = Date.now() - start;
+    return { provider: providerName, results, error: null, latencyMs };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    return { provider: providerName, results: [], error: err.message, latencyMs };
+  }
 }
 
 export function createSearchUnifiedRouter({ database }) {
@@ -177,7 +133,7 @@ export function createSearchUnifiedRouter({ database }) {
     }
 
     const type = typeof request.query.type === 'string' ? request.query.type.toLowerCase() : 'all';
-    const validTypes = ['all', 'music', 'podcast', 'movie', 'video_podcast'];
+    const validTypes = ['all', 'music', 'podcast', 'movie', 'tv', 'audiobook', 'youtube', 'video_podcast'];
     if (!validTypes.includes(type)) {
       return response.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}.` });
     }
@@ -213,70 +169,77 @@ export function createSearchUnifiedRouter({ database }) {
     if (cachedPayload) {
       payload = cachedPayload;
     } else {
-      const tasks = [];
+      const providerTasks = [];
+
       if (type === 'all' || type === 'music') {
-        tasks.push(fetchAudius(query).then((results) => ({ provider: 'audius', results })).catch((err) => ({ provider: 'audius', error: err.message })));
+        providerTasks.push(measureProvider('audius', () => fetchAudius(query)));
+        providerTasks.push(measureProvider('deezer', () => searchDeezerMusic(query)));
       }
       if (type === 'all' || type === 'podcast') {
-        tasks.push(fetchITunesPodcasts(query).then((results) => ({ provider: 'itunes', results })).catch((err) => ({ provider: 'itunes', error: err.message })));
+        providerTasks.push(measureProvider('itunes', () => fetchITunesPodcasts(query)));
       }
       if (type === 'all' || type === 'movie') {
-        tasks.push(fetchTmdbMovies(query).then((results) => ({ provider: 'tmdb', results })).catch((err) => ({ provider: 'tmdb', error: err.message })));
+        providerTasks.push(measureProvider('tmdb', () => fetchTmdbMovies(query)));
       }
-      if (type === 'all' || type === 'video_podcast') {
-        tasks.push(fetchVideoPodcasts(query, type).then((results) => ({ provider: 'video_podcast', results })).catch((err) => ({ provider: 'video_podcast', error: err.message })));
+      if (type === 'all' || type === 'tv') {
+        providerTasks.push(measureProvider('tv', () => searchTvShows(query)));
+      }
+      if (type === 'all' || type === 'audiobook') {
+        providerTasks.push(measureProvider('librivox', () => searchAudiobooks(query)));
+      }
+      if (type === 'all' || type === 'youtube' || type === 'video_podcast') {
+        providerTasks.push(measureProvider('youtube', () => searchYouTubeVideos(query)));
+      }
+      if (type === 'video_podcast') {
+        providerTasks.push(measureProvider('itunes_video', () => fetchITunesPodcasts(query).then(res => res.map(i => ({ ...i, media_type: 'video_podcast' })))));
       }
 
-      const settled = await Promise.allSettled(tasks);
-      const sourcesMeta = {
-        tmdb: { count: 0, error: null },
-        itunes: { count: 0, error: null },
-        audius: { count: 0, error: null },
-        youtube: { count: 0, error: null },
-      };
-
+      const settled = await Promise.allSettled(providerTasks);
+      const sourcesMeta = {};
       let allResults = [];
 
       for (const res of settled) {
         if (res.status === 'fulfilled') {
-          const val = res.value;
-          if (val.error) {
-            if (val.provider === 'tmdb') sourcesMeta.tmdb.error = val.error;
-            if (val.provider === 'itunes') sourcesMeta.itunes.error = val.error;
-            if (val.provider === 'audius') sourcesMeta.audius.error = val.error;
-            if (val.provider === 'video_podcast') sourcesMeta.itunes.error = val.error;
-          } else {
-            const results = val.results ?? [];
-            for (const item of results) {
-              const src = item.source;
-              if (sourcesMeta[src]) {
-                sourcesMeta[src].count++;
-              }
-            }
-            allResults.push(...results);
-          }
+          const { provider, results, error, latencyMs } = res.value;
+          sourcesMeta[provider] = {
+            count: results.length,
+            error: error ?? null,
+            latencyMs,
+          };
+          allResults.push(...results);
         }
       }
 
-      // Sorting
+      const seen = new Set();
+      const uniqueResults = [];
+      for (const item of allResults) {
+        const key = `${item.media_type}:${item.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueResults.push(item);
+        }
+      }
+
       if (sort === 'recent') {
-        allResults.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
+        uniqueResults.sort((a, b) => (b.release_year ?? 0) - (a.release_year ?? 0));
       } else if (sort === 'popular') {
-        allResults.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        uniqueResults.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
       }
 
       payload = {
         query,
         type,
         sort,
-        results: allResults,
+        results: uniqueResults,
         sources: sourcesMeta,
       };
+
+      const ttl = type === 'audiobook' ? "INTERVAL '7 days'" : "INTERVAL '1 hour'";
 
       try {
         await database.prepare(`
           INSERT INTO search_cache (query, type, sort, response_json, expires_at)
-          VALUES ($1, $2, $3, $4, NOW() + ${CACHE_TTL})
+          VALUES ($1, $2, $3, $4, NOW() + ${ttl})
           ON CONFLICT (query, type, sort) DO UPDATE SET
             response_json = excluded.response_json,
             expires_at = excluded.expires_at
@@ -286,11 +249,9 @@ export function createSearchUnifiedRouter({ database }) {
       }
     }
 
-    // Slice pagination on read
     const fullResults = payload.results ?? [];
     const slicedResults = fullResults.slice(offset, offset + limit);
 
-    // Analytics logging: only on cache miss + sliding window rate limited
     if (cacheMiss && shouldLogAnalytics()) {
       const userId = request.user?.id || null;
       database.prepare(`
@@ -359,7 +320,6 @@ export function createSearchUnifiedRouter({ database }) {
 
       const payload = { suggestions: topSuggestions };
 
-      // Verify type = 'suggest' is written to search_cache (whitelisted in migration 014)
       await database.prepare(`
         INSERT INTO search_cache (query, type, sort, response_json, expires_at)
         VALUES ($1, 'suggest', 'relevance', $2, NOW() + ${SUGGEST_CACHE_TTL})
