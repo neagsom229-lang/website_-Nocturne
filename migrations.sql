@@ -187,10 +187,11 @@ CREATE INDEX IF NOT EXISTS playlist_items_playlist_id_idx ON playlist_items (pla
 
 CREATE TABLE IF NOT EXISTS search_cache (
   query TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio', 'movie', 'music', 'video_podcast')),
+  type TEXT NOT NULL CHECK (type IN ('video', 'podcast', 'audio', 'movie', 'music', 'video_podcast', 'all', 'suggest')),
+  sort TEXT NOT NULL DEFAULT 'relevance',
   response_json TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (query, type)
+  PRIMARY KEY (query, type, sort)
 );
 
 CREATE TABLE IF NOT EXISTS random_music_cache (

@@ -291,6 +291,22 @@ export async function initializeDatabase() {
     }
     console.debug('Could not verify search_cache primary key constraint:', error.message);
   }
+
+  try {
+    const typeConstraintCheck = await db.prepare(`
+      SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint
+      WHERE conname = 'search_cache_type_check'
+    `).get();
+    const typeDef = typeConstraintCheck?.def ?? '';
+    const expectedTypes = ['video', 'podcast', 'audio', 'movie', 'music', 'video_podcast', 'all', 'suggest'];
+    const missingTypes = expectedTypes.filter((t) => !typeDef.includes(t));
+    if (missingTypes.length > 0) {
+      console.warn(`WARNING: search_cache_type_check constraint is missing expected types (${missingTypes.join(', ')}). Please apply migration 014.`);
+    }
+  } catch (error) {
+    console.debug('Could not verify search_cache_type_check constraint:', error.message);
+  }
 }
 
 export function initializeUserData(user, tx) {
