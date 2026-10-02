@@ -64,80 +64,70 @@ function createProviders(fetchImpl) {
       });
     },
     async podcasts() {
-      const terms = ['tech', 'news', 'comedy', 'true crime', 'business'];
+      const terms = ['tech', 'news', 'comedy', 'business', 'true crime'];
+      const term = terms[Math.floor(Math.random() * terms.length)];
       const seenIds = new Set();
       const allPodcasts = [];
 
-      for (const term of terms) {
-        try {
-          const url = new URL('https://itunes.apple.com/search');
-          url.search = new URLSearchParams({
-            term,
-            entity: 'podcast',
-            media: 'podcast',
-            limit: '10',
-          });
-          const response = await requestJson(url, 'iTunes', fetchImpl);
-          if (Array.isArray(response.results)) {
-            for (const podcast of response.results) {
-              const id = podcast.collectionId ?? podcast.trackId;
-              const title = podcast.collectionName ?? podcast.trackName;
-              if (id === undefined || typeof title !== 'string') continue;
-              const stringId = String(id);
-              if (seenIds.has(stringId)) continue;
-              seenIds.add(stringId);
-              allPodcasts.push({
-                id: stringId,
-                title,
-                channel: podcast.artistName ?? 'Unknown channel',
-                thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
-                external_url: podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null,
-                media_type: 'podcast',
-                source: 'itunes',
-              });
-            }
-          }
-        } catch (error) {
-          // try next term
-        }
-      }
-      if (allPodcasts.length > 0) return allPodcasts.slice(0, 12);
-      return curatedSeeds.podcasts;
-    },
-    async music() {
-      // 1. Try Audius actual trending endpoint
       try {
-        const url = new URL('https://discoveryprovider.audius.co/v1/tracks/trending');
-        url.search = new URLSearchParams({ app_name: 'Nocturne', limit: '12' });
-        const response = await requestJson(url, 'Audius', fetchImpl);
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          const mapped = response.data.flatMap((track) => {
-            if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
-            return [{
-              id: track.id,
-              title: track.title,
-              artist: track.user?.name ?? 'Unknown artist',
-              thumbnail_url: track.artwork?.['480x480'] ?? track.artwork?.['150x150'] ?? null,
-              stream_url: `https://discoveryprovider.audius.co/v1/tracks/${encodeURIComponent(track.id)}/stream?app_name=Nocturne`,
-              media_type: 'music',
-              source: 'audius',
-            }];
-          });
-          if (mapped.length > 0) return mapped;
+        const url = new URL('https://itunes.apple.com/search');
+        url.search = new URLSearchParams({
+          term,
+          entity: 'podcast',
+          media: 'podcast',
+          limit: '12',
+        });
+        const response = await requestJson(url, 'iTunes', fetchImpl);
+        if (Array.isArray(response.results)) {
+          for (const podcast of response.results) {
+            const id = podcast.collectionId ?? podcast.trackId;
+            const title = podcast.collectionName ?? podcast.trackName;
+            if (id === undefined || typeof title !== 'string') continue;
+            const stringId = String(id);
+            if (seenIds.has(stringId)) continue;
+            seenIds.add(stringId);
+            allPodcasts.push({
+              id: stringId,
+              title,
+              channel: podcast.artistName ?? 'Unknown channel',
+              thumbnail_url: podcast.artworkUrl600 ?? podcast.artworkUrl100 ?? null,
+              external_url: podcast.collectionViewUrl ?? podcast.trackViewUrl ?? null,
+              release_date: podcast.releaseDate,
+              media_type: 'podcast',
+              source: 'itunes',
+            });
+          }
         }
       } catch (error) {
-        console.warn('Audius trending endpoint failed, trying search terms:', error.message);
+        console.warn(`iTunes podcast search failed for term '${term}':`, error.message);
       }
 
-      // 2. Fall back to curated list of high-engagement search terms
-      const searchTerms = ['lofi', 'chillhop', 'jazz', 'electronic', 'ambient'];
+      allPodcasts.sort((a, b) => {
+        const dateA = Date.parse(a.release_date ?? 0);
+        const dateB = Date.parse(b.release_date ?? 0);
+        return dateB - dateA;
+      });
+
+      const results = allPodcasts.length > 0 ? allPodcasts.slice(0, 12) : curatedSeeds.podcasts;
+      console.info('[discover] podcasts:', {
+        provider: 'itunes',
+        query: term,
+        count: results.length,
+        usedFallback: allPodcasts.length === 0,
+      });
+      return results;
+    },
+    async music() {
+      const searchTerms = ['lofi', 'chillhop', 'ambient', 'jazz', 'electronic'];
       const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+      let mapped = [];
+
       try {
         const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
         url.search = new URLSearchParams({ app_name: 'Nocturne', query: term, limit: '12' });
         const response = await requestJson(url, 'Audius', fetchImpl);
         if (Array.isArray(response.data) && response.data.length > 0) {
-          const mapped = response.data.flatMap((track) => {
+          mapped = response.data.flatMap((track) => {
             if (typeof track.id !== 'string' || typeof track.title !== 'string') return [];
             return [{
               id: track.id,
@@ -149,14 +139,19 @@ function createProviders(fetchImpl) {
               source: 'audius',
             }];
           });
-          if (mapped.length > 0) return mapped;
         }
       } catch (error) {
-        console.warn('Audius fallback search failed:', error.message);
+        console.warn(`Audius search failed for term '${term}':`, error.message);
       }
 
-      // 3. Final fallback to curated seeds
-      return curatedSeeds.music;
+      const results = mapped.length > 0 ? mapped.slice(0, 12) : curatedSeeds.music;
+      console.info('[discover] music:', {
+        provider: 'audius',
+        query: term,
+        count: results.length,
+        usedFallback: mapped.length === 0,
+      });
+      return results;
     },
     async musicRecommendations(query) {
       const url = new URL('https://discoveryprovider.audius.co/v1/tracks/search');
