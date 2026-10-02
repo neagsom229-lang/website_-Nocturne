@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { saveMedia } from '../lib/mediaApi';
-import { prefetchMovieDetails, saveMovie } from '../lib/moviesApi';
+import { saveDiscoveryMedia } from '../lib/mediaApi';
+import { prefetchMovieDetails } from '../lib/moviesApi';
 import { getComments, getLikes, likeMedia, unlikeMedia } from '../lib/socialApi';
 import type { DiscoveryMedia } from '../types';
 import { AddToPlaylistButton } from './AddToPlaylistButton';
@@ -32,24 +32,7 @@ function playerMedia(media: DiscoveryMedia) {
   };
 }
 
-export async function saveDiscoveryMedia(media: DiscoveryMedia): Promise<string> {
-  if (media.source === 'tmdb') return saveMovie(Number(media.id));
-  const provider = media.source;
-  const type = media.media_type === 'podcast' ? 'podcast' : 'audio';
-  const result = await saveMedia({
-    type,
-    provider,
-    externalId: media.id,
-    title: media.title,
-    artist: media.artist ?? media.channel ?? null,
-    thumbnailUrl: media.thumbnail_url,
-    streamUrl: media.stream_url ?? '',
-    externalUrl: media.external_url ?? null,
-    mediaType: media.media_type === 'video' ? 'video_podcast' : media.media_type,
-  });
-  if (!result.item.id) throw new Error('The item was saved, but its library ID was not returned.');
-  return result.item.id;
-}
+export { saveDiscoveryMedia } from '../lib/mediaApi';
 
 export function MediaCard({
   media,

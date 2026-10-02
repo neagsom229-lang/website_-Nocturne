@@ -1,8 +1,6 @@
 import {
-  createContext,
   lazy,
   Suspense,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -27,25 +25,14 @@ import {
   updateNowPlaying,
   type NowPlaying,
 } from '../lib/musicApi';
+import { PlayerContext, useWorkspacePlayer, type ExternalMedia, type WorkspacePlayer } from '../lib/workspaceHooks';
+
+export { useOptionalWorkspacePlayer, useWorkspacePlayer } from '../lib/workspaceHooks';
 const YouTubePlayer = lazy(() => import('react-player/youtube'));
 const SoundCloudPlayer = lazy(() => import('react-player/soundcloud'));
 const FilePlayer = lazy(() => import('react-player/file'));
 
 const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-
-type ExternalMedia = {
-  id?: string;
-  type: 'video' | 'podcast' | 'audio';
-  provider: 'youtube' | 'itunes' | 'soundcloud' | 'audius' | 'tmdb' | 'omdb' | 'deezer';
-  mediaType?: 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
-  externalId: string;
-  title: string;
-  artist: string | null;
-  thumbnailUrl: string | null;
-  streamUrl: string;
-  externalUrl: string | null;
-  createdAt?: string;
-};
 
 type NavigationItem = {
   label: string;
@@ -100,45 +87,6 @@ const NAV_GROUPS: { label: string; items: NavigationItem[] }[] = [
     ],
   },
 ];
-
-type WorkspacePlayer = {
-  mixes: Mix[];
-  nowPlaying: NowPlaying | null;
-  externalMedia: ExternalMedia | null;
-  externalQueue: ExternalMedia[];
-  externalQueueIndex: number;
-  externalPlaying: boolean;
-  buffering: boolean;
-  progress: number;
-  duration: number;
-  error: string;
-  volume: number;
-  updateProgress: (seconds: number) => void;
-  setDuration: (seconds: number) => void;
-  setError: (message: string) => void;
-  setExternalPlaying: (playing: boolean) => void;
-  selectTrack: (mix: Mix, track: Track) => Promise<void>;
-  playExternalMedia: (media: ExternalMedia) => void;
-  playExternalQueue: (media: ExternalMedia[]) => void;
-  ensureExternalMediaSaved: () => Promise<string>;
-  toggle: () => Promise<void>;
-  skip: (direction: -1 | 1) => Promise<void>;
-  seek: (seconds: number) => void;
-  persistSeek: () => Promise<void>;
-  setVolume: (value: number) => void;
-};
-
-const PlayerContext = createContext<WorkspacePlayer | null>(null);
-
-export function useWorkspacePlayer() {
-  const player = useContext(PlayerContext);
-  if (!player) throw new Error('useWorkspacePlayer must be used inside WorkspaceShell');
-  return player;
-}
-
-export function useOptionalWorkspacePlayer() {
-  return useContext(PlayerContext);
-}
 
 function PlayerDock() {
   const { user } = useAuth();

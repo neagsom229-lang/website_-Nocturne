@@ -214,9 +214,9 @@ async function trendingFeed(database, providerSet) {
   ], providerSet);
   if (!failed) {
     await database.prepare(`
-      INSERT INTO search_cache (query, type, response_json, expires_at)
-      VALUES ('discover:trending', 'music', $1, NOW() + ${CACHE_TTLS.trending})
-      ON CONFLICT (query, type) DO UPDATE SET
+      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+      VALUES ('discover:trending', 'music', 'relevance', $1, NOW() + ${CACHE_TTLS.trending})
+      ON CONFLICT (query, type, sort) DO UPDATE SET
         response_json = excluded.response_json,
         expires_at = excluded.expires_at
     `).run(JSON.stringify(result));
@@ -260,9 +260,9 @@ export function createDiscoverRouter({
     if (settled[1].status === 'rejected') console.error('New podcast releases provider failed:', settled[1].reason);
     if (settled.every((entry) => entry.status === 'fulfilled')) {
       await database.prepare(`
-        INSERT INTO search_cache (query, type, response_json, expires_at)
-        VALUES ('discover:new-releases', 'podcast', $1, NOW() + ${CACHE_TTLS.releases})
-        ON CONFLICT (query, type) DO UPDATE SET
+        INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+        VALUES ('discover:new-releases', 'podcast', 'relevance', $1, NOW() + ${CACHE_TTLS.releases})
+        ON CONFLICT (query, type, sort) DO UPDATE SET
           response_json = excluded.response_json,
           expires_at = excluded.expires_at
       `).run(JSON.stringify(result));

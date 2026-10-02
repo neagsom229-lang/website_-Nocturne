@@ -45,9 +45,9 @@ export async function refreshGenreRecommendations(database, genreId) {
     };
   });
   await database.prepare(`
-    INSERT INTO search_cache (query, type, response_json, expires_at)
-    VALUES ($1, 'movie', $2, NOW() + ${GENRE_CACHE_TTL})
-    ON CONFLICT (query, type) DO UPDATE SET
+    INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+    VALUES ($1, 'movie', 'relevance', $2, NOW() + ${GENRE_CACHE_TTL})
+    ON CONFLICT (query, type, sort) DO UPDATE SET
       response_json = excluded.response_json,
       expires_at = excluded.expires_at
   `).run(genreCacheKey(genreId), JSON.stringify(result));

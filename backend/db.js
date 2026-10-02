@@ -274,6 +274,23 @@ const seed = () => db.transaction((tx) => {
 
 export async function initializeDatabase() {
   await seed();
+  try {
+    const constraintCheck = await db.prepare(`
+      SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint
+      WHERE conrelid = 'search_cache'::regclass AND contype = 'p'
+    `).get();
+    const pkDef = constraintCheck?.def ?? '';
+    if (!pkDef.includes('sort')) {
+      console.warn('WARNING: search_cache primary key does not include the "sort" column. Migration 013 may not have been applied.');
+      throw new Error('Database schema is out of date: search_cache primary key must include (query, type, sort). Please apply migration 013.');
+    }
+  } catch (error) {
+    if (error.message.includes('Database schema is out of date')) {
+      throw error;
+    }
+    console.debug('Could not verify search_cache primary key constraint:', error.message);
+  }
 }
 
 export function initializeUserData(user, tx) {

@@ -392,7 +392,7 @@ export function MusicNowPlaying() {
     seek,
     persistSeek,
   } = useWorkspacePlayer();
-  const currentMix = nowPlaying ? mixes.find((mix) => mix.id === nowPlaying.mix.id) : undefined;
+  const currentMix = nowPlaying ? mixes.find((mix: Mix) => mix.id === nowPlaying.mix.id) : undefined;
 
   return (
     <MusicFrame>

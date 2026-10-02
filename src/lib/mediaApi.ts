@@ -1,3 +1,6 @@
+import type { DiscoveryMedia } from '../types';
+import { saveMovie } from './moviesApi';
+
 export type MediaType = 'video' | 'podcast' | 'audio' | 'video_podcast';
 export type MediaProvider = 'youtube' | 'itunes' | 'tmdb' | 'omdb' | 'deezer' | 'audius';
 export type LibraryMediaType = 'music' | 'podcast' | 'movie' | 'tv' | 'video_podcast';
@@ -169,4 +172,23 @@ export async function searchSuggest(query: string): Promise<SuggestionItem[]> {
   const params = new URLSearchParams({ q: query });
   const response = await request<{ suggestions: SuggestionItem[] }>(`/api/search/suggest?${params}`);
   return response.suggestions;
+}
+
+export async function saveDiscoveryMedia(media: DiscoveryMedia): Promise<string> {
+  if (media.source === 'tmdb') return saveMovie(Number(media.id));
+  const provider = media.source;
+  const type = media.media_type === 'podcast' ? 'podcast' : 'audio';
+  const result = await saveMedia({
+    type,
+    provider,
+    externalId: media.id,
+    title: media.title,
+    artist: media.artist ?? media.channel ?? null,
+    thumbnailUrl: media.thumbnail_url,
+    streamUrl: media.stream_url ?? '',
+    externalUrl: media.external_url ?? null,
+    mediaType: media.media_type === 'video' ? 'video_podcast' : media.media_type,
+  });
+  if (!result.item.id) throw new Error('The item was saved, but its library ID was not returned.');
+  return result.item.id;
 }

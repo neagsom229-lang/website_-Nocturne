@@ -22,7 +22,7 @@ import { createSocialRouter } from './routes/social.js';
 import { createSearchUnifiedRouter } from './routes/searchUnified.js';
 
 const app = express();
-const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) {
@@ -396,9 +396,9 @@ app.get('/api/search', searchLimiter, async (request, response, next) => {
   try {
     const results = await searchExternalMedia(query, type);
     await db.prepare(`
-      INSERT INTO search_cache (query, type, response_json, expires_at)
-      VALUES ($1, $2, $3, (NOW() + INTERVAL '15 minutes'))
-      ON CONFLICT(query, type) DO UPDATE SET
+      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+      VALUES ($1, $2, 'relevance', $3, (NOW() + INTERVAL '15 minutes'))
+      ON CONFLICT(query, type, sort) DO UPDATE SET
         response_json = excluded.response_json,
         expires_at = excluded.expires_at
     `).run(cacheQuery, type, JSON.stringify(results));
@@ -1018,6 +1018,22 @@ app.use((error, _request, response, _next) => {
 
 await initializeDatabase();
 
-app.listen(port, () => {
-  console.log(`BEDROOM POP server listening on http://localhost:${port}`);
+const server = app.listen(port);
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    if (port === 3000) {
+      console.warn('Port 3000 in use; falling back to 3001. Kill stale Node process if this is unexpected.');
+      server.listen(3001);
+    } else {
+      console.error(`Port ${port} in use.`);
+      process.exit(1);
+    }
+  } else {
+    console.error(err);
+    process.exit(1);
+  }
+});
+server.on('listening', () => {
+  const activePort = server.address()?.port ?? port;
+  console.log(`BEDROOM POP server listening on http://localhost:${activePort}`);
 });
