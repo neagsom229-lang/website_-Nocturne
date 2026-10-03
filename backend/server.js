@@ -104,6 +104,26 @@ const cookieOptions = {
 };
 
 async function authenticate(request, response, next) {
+  const publicPaths = [
+    '/auth/signup',
+    '/auth/signin',
+    '/auth/signin/google',
+    '/auth/signin/facebook',
+    '/auth/callback',
+    '/auth/verify-email',
+    '/auth/verify-email/resend',
+    '/auth/reset-password',
+    '/auth/reset-password/confirm',
+    '/auth/magic-link',
+  ];
+  const isPublicAuthPath = publicPaths.includes(request.path) ||
+    request.path.startsWith('/auth/signin/') ||
+    request.path.startsWith('/auth/verify-email/');
+
+  if (isPublicAuthPath) {
+    return next();
+  }
+
   const publicPlaylistRead = request.method === 'GET' && (
     request.path === '/playlists/public' || /^\/playlists\/\d+$/.test(request.path)
   );
