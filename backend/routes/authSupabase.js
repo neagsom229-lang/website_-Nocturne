@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
 import {
   sendWelcomeEmail,
@@ -35,7 +35,11 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     max: 3,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    keyGenerator: (request) => request.body?.email?.trim().toLowerCase() || request.ip,
+    keyGenerator: (request) => {
+      const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+      if (email) return `email:${email}`;
+      return `ip:${ipKeyGenerator(request.ip)}`;
+    },
     message: { error: 'Too many password reset requests. Please try again later.' },
   });
 
@@ -52,7 +56,11 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     max: 3,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    keyGenerator: (request) => request.body?.email?.trim().toLowerCase() || request.ip,
+    keyGenerator: (request) => {
+      const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+      if (email) return `email:${email}`;
+      return `ip:${ipKeyGenerator(request.ip)}`;
+    },
     message: { error: 'Too many magic link requests. Please try again later.' },
   });
 
@@ -71,7 +79,8 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     legacyHeaders: false,
     keyGenerator: (request) => {
       const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
-      return email || request.ip;
+      if (email) return `email:${email}`;
+      return `ip:${ipKeyGenerator(request.ip)}`;
     },
     message: { error: 'Too many verification emails requested. Please try again later.' },
   });

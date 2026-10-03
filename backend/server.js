@@ -1040,19 +1040,6 @@ app.use((err, req, res, next) => {
 
 await initializeDatabase();
 
-console.info('=== Registered routes ===');
-app._router.stack.forEach((layer) => {
-  if (layer.route) {
-    console.info(`${Object.keys(layer.route.methods).join(',').toUpperCase()} ${layer.route.path}`);
-  } else if (layer.name === 'router' && layer.handle?.stack) {
-    layer.handle.stack.forEach((r) => {
-      if (r.route) {
-        console.info(`  ${Object.keys(r.route.methods).join(',').toUpperCase()} ${r.route.path}`);
-      }
-    });
-  }
-});
-
 const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
 const server = app.listen(port, host);
 server.on('error', (err) => {
