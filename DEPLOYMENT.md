@@ -152,6 +152,16 @@ it is a Shared Pooler hostname; the server does not log the URI or password.
 If it shows a direct `db.*.supabase.co` hostname, replace the value with the
 Shared Pooler URI and redeploy.
 
+## Supabase Email Templates
+
+To support email verification with custom token hashes matching our `/auth/verify` route, go to your Supabase Dashboard → **Authentication** → **Email Templates** → **Confirmation**, and set the body template to include:
+
+```html
+<a href="{{ .SiteURL }}/auth/verify?token_hash={{ .TokenHash }}&type=signup">Confirm your email</a>
+```
+
+If using Supabase's default template (which redirects with `#access_token=...` in the hash fragment), `VerifyEmail.tsx` handles it as a fallback, but configuring the custom template above is recommended for direct token hash verification.
+
 ## Local development
 
 1. Copy `.env.example` to `.env`.

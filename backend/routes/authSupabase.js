@@ -31,6 +31,26 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     message: { error: 'Too many password reset requests. Please try again later.' },
   });
 
+  const verifyResendLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (request) => {
+      const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+      return email || request.ip;
+    },
+    message: { error: 'Too many verification emails requested. Please try again later.' },
+  });
+
+  const verifyResendIpLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 30,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many verification emails requested. Please try again later.' },
+  });
+
   function csrfProtection(request, response, next) {
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
       const origin = request.get('origin');
@@ -186,8 +206,8 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         throw error;
       }
 
-      const user = await syncUserRecord(data.user, { displayName: displayName.trim(), emailVerified: false });
-      return response.status(201).json({ user, message: 'Check your email to verify your account.' });
+      await syncUserRecord(data.user, { displayName: displayName.trim(), emailVerified: false });
+      return response.status(201).json({ user: null, email: normalizedEmail, message: 'Check your email to verify your account.' });
     } catch (error) {
       console.error('Supabase signup failed:', error);
       return response.status(500).json({ error: error instanceof Error ? error.message : 'Could not create your account right now' });
@@ -302,7 +322,8 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
   });
 
   router.get('/signin/google', (_request, response) => {
-    const redirectTo = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/auth/callback`;
+    const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const redirectTo = `${appUrl}/auth/callback`;
     supabaseClient.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
@@ -317,7 +338,8 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
   });
 
   router.get('/signin/facebook', (_request, response) => {
-    const redirectTo = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/auth/callback`;
+    const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+    const redirectTo = `${appUrl}/auth/callback`;
     supabaseClient.auth.signInWithOAuth({
       provider: 'facebook',
       options: { redirectTo },
@@ -385,11 +407,32 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     }
   });
 
+  router.post('/verify-email/resend', verifyResendIpLimiter, verifyResendLimiter, async (request, response) => {
+    const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+    if (!email || email.length > 254) {
+      return response.status(400).json({ error: 'Valid email required' });
+    }
+    try {
+      const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+      const emailRedirectTo = `${appUrl}/auth/verify`;
+      await supabaseClient.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo },
+      });
+      return response.json({ sent: true });
+    } catch (err) {
+      console.error('Resend verification failed:', err);
+      return response.json({ sent: true });
+    }
+  });
+
   router.post('/reset-password', resetLimiter, async (request, response) => {
     const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
     if (!email) return response.status(400).json({ error: 'Email required' });
     try {
-      const redirectTo = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/auth/reset-password`;
+      const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+      const redirectTo = `${appUrl}/auth/reset-password`;
       const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) return response.status(400).json({ error: error.message });
       return response.json({ sent: true });

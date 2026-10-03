@@ -2,7 +2,10 @@ import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
 const Home = lazy(() => import('./routes/Home').then((module) => ({ default: module.Home })));
-const AuthPage = lazy(() => import('./auth/AuthRoutes').then((module) => ({ default: module.AuthPage })));
+const SignIn = lazy(() => import('./routes/SignIn').then((module) => ({ default: module.SignIn })));
+const SignUp = lazy(() => import('./routes/SignUp').then((module) => ({ default: module.SignUp })));
+const AuthCallback = lazy(() => import('./routes/AuthCallback').then((module) => ({ default: module.AuthCallback })));
+const VerifyEmail = lazy(() => import('./routes/VerifyEmail').then((module) => ({ default: module.VerifyEmail })));
 const ProtectedRoutes = lazy(() => import('./auth/AuthRoutes').then((module) => ({ default: module.ProtectedRoutes })));
 
 const LandingPage = lazy(() => import('./routes/LandingPage').then((module) => ({ default: module.LandingPage })));
@@ -52,8 +55,10 @@ export function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/landing" element={<LandingPage />} />
-        <Route path="/auth/login" element={<AuthPage mode="login" />} />
-        <Route path="/auth/register" element={<AuthPage mode="register" />} />
+        <Route path="/auth/login" element={<SignIn />} />
+        <Route path="/auth/register" element={<SignUp />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/auth/verify" element={<VerifyEmail />} />
         <Route path="/playlists/:id" element={<PlaylistDetailRoute />} />
         <Route path="/u/:id" element={<ProfilePage />} />
         <Route element={<ProtectedRoutes />}>
