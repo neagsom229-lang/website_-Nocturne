@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { sendAccountDeletedEmail } from '../lib/emailService.js';
 
 const MAX_PAGE_SIZE = 50;
 
@@ -32,6 +34,26 @@ function canViewProfile(profile, viewerId) {
 
 export function createUsersRouter({ database, authenticate }) {
   const router = Router();
+
+  function csrfProtection(request, response, next) {
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+      const origin = request.get('origin');
+      const host = request.get('host');
+      if (origin && host) {
+        try {
+          const originHost = new URL(origin).host;
+          if (originHost !== host) {
+            return response.status(403).json({ error: 'CSRF validation failed: Origin mismatch' });
+          }
+        } catch {
+          return response.status(403).json({ error: 'CSRF validation failed: Invalid origin' });
+        }
+      }
+    }
+    return next();
+  }
+
+  router.use(csrfProtection);
 
   router.get('/me', authenticate, async (request, response) => {
     const user = await database.prepare(`
@@ -104,12 +126,30 @@ export function createUsersRouter({ database, authenticate }) {
   });
 
   router.delete('/me', authenticate, async (request, response) => {
+    const user = await database.prepare(`
+      SELECT id, email, display_name AS "displayName", supabase_uid AS "supabaseUid"
+      FROM users WHERE id = $1 AND deleted_at IS NULL
+    `).get(request.user.id);
+    if (!user) return response.status(404).json({ error: 'Account not found.' });
+
+    const supabaseUid = user.supabaseUid || user.id;
+    try {
+      await supabaseAdmin.auth.admin.signOut(supabaseUid, 'global');
+      await supabaseAdmin.auth.admin.updateUserById(supabaseUid, { ban_duration: '8760h' });
+    } catch (err) {
+      console.error('[auth] Supabase revocation during deletion failed:', err);
+    }
+
     const result = await database.prepare(`
-      UPDATE users SET deleted_at = NOW(), is_public = false
+      UPDATE users SET deleted_at = NOW(), deletion_scheduled_for = NOW() + INTERVAL '30 days', is_public = false
       WHERE id = $1 AND deleted_at IS NULL
-    `).run(request.user.id);
+    `).run(user.id);
     if (!result.changes) return response.status(404).json({ error: 'Account not found.' });
-    await database.prepare('DELETE FROM auth_sessions WHERE user_id = $1').run(request.user.id);
+
+    await database.prepare('DELETE FROM sessions WHERE user_id = $1').run(user.id);
+    await database.prepare('DELETE FROM auth_sessions WHERE user_id = $1').run(user.id);
+    await sendAccountDeletedEmail(user).catch(() => {});
+    response.clearCookie('nocturne_session', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
     return response.status(204).end();
   });
 
@@ -155,23 +195,15 @@ export function createUsersRouter({ database, authenticate }) {
       if (!canViewProfile(profile, request.user?.id)) {
         return response.status(profile ? 403 : 404).json({ error: 'Profile not found.' });
       }
-      const limit = validPage(request.query.limit, 20, MAX_PAGE_SIZE);
-      const offset = validPage(request.query.offset, 0, 100_000);
-      if (limit === null || limit < 1 || offset === null) {
-        return response.status(400).json({ error: 'limit must be 1 to 50 and offset a non-negative integer.' });
-      }
-      const direction = relation === 'followers' ? 'f.follower_id' : 'f.following_id';
-      const joinKey = relation === 'followers' ? 'f.follower_id' : 'f.following_id';
-      const ownerColumn = relation === 'followers' ? 'f.following_id' : 'f.follower_id';
-      const users = await database.prepare(`
-        SELECT u.id, u.display_name AS "displayName", u.avatar_url AS "avatarUrl",
-          EXISTS (SELECT 1 FROM follows own WHERE own.follower_id = $4 AND own.following_id = u.id) AS "isFollowing"
-        FROM follows f JOIN users u ON u.id = ${joinKey}
-        WHERE ${ownerColumn} = $1 AND u.deleted_at IS NULL AND u.is_public = true
-        ORDER BY f.created_at DESC, ${direction}
-        LIMIT $2 OFFSET $3
-      `).all(profile.id, limit, offset, request.user?.id ?? '');
-      return response.json({ users, limit, offset });
+      const items = await database.prepare(`
+        SELECT u.id, u.display_name AS "displayName", u.avatar_url AS "avatarUrl", u.bio
+        FROM users u
+        JOIN follows f ON f.${relation === 'followers' ? 'follower_id' : 'following_id'} = u.id
+        WHERE f.${relation === 'followers' ? 'following_id' : 'follower_id'} = $1
+          AND u.deleted_at IS NULL
+        ORDER BY f.created_at DESC
+      `).all(profile.id);
+      return response.json({ users: items });
     });
   }
 
@@ -182,20 +214,13 @@ export function createUsersRouter({ database, authenticate }) {
     if (!canViewProfile(profile, request.user?.id)) {
       return response.status(profile ? 403 : 404).json({ error: 'Profile not found.' });
     }
-    const limit = validPage(request.query.limit, 20, MAX_PAGE_SIZE);
-    const offset = validPage(request.query.offset, 0, 100_000);
-    if (limit === null || limit < 1 || offset === null) {
-      return response.status(400).json({ error: 'limit must be 1 to 50 and offset a non-negative integer.' });
-    }
     const items = await database.prepare(`
-      SELECT m.id AS "libraryId", m.type, m.provider, m.external_id AS "externalId", m.media_type AS "mediaType",
-        m.title, m.artist, m.thumbnail_url AS "thumbnailUrl", m.stream_url AS "streamUrl",
-        m.external_url AS "externalUrl", l.created_at AS "likedAt"
-      FROM likes l JOIN media_library m ON m.id = l.media_library_id
-      WHERE l.user_id = $1 AND m.user_id = $1
-      ORDER BY l.created_at DESC LIMIT $2 OFFSET $3
-    `).all(profile.id, limit, offset);
-    return response.json({ items, limit, offset });
+      SELECT ml.media_type AS "mediaType", ml.media_id AS "mediaId", ml.created_at AS "createdAt"
+      FROM media_likes ml
+      WHERE ml.user_id = $1
+      ORDER BY ml.created_at DESC
+    `).all(profile.id);
+    return response.json({ items });
   });
 
   return router;

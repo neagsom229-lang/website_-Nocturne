@@ -1,4 +1,4 @@
--- Migration 018: Sessions and Auth events audit log table
+-- Migration 018: Sessions, Auth events, user device hashes, and deletion/welcome columns
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -8,6 +8,20 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_used_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS welcomed_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_scheduled_for TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS user_devices (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_hash TEXT NOT NULL,
+  user_agent TEXT,
+  ip TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, device_hash)
+);
+CREATE INDEX IF NOT EXISTS user_devices_user_id_idx ON user_devices(user_id);
 
 CREATE TABLE IF NOT EXISTS auth_events (
   id SERIAL PRIMARY KEY,
@@ -21,5 +35,4 @@ CREATE TABLE IF NOT EXISTS auth_events (
   metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS auth_events_user_id_idx ON auth_events(user_id, created_at DESC);

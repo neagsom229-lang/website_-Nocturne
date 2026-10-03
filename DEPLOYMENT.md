@@ -162,6 +162,12 @@ To support email verification with custom token hashes matching our `/auth/verif
 
 If using Supabase's default template (which redirects with `#access_token=...` in the hash fragment), `VerifyEmail.tsx` handles it as a fallback, but configuring the custom template above is recommended for direct token hash verification.
 
+## Resend & Email Configuration
+
+Nocturne uses [Resend](https://resend.com) for welcome and security notification emails (password changes, new device alerts, account deletion).
+- Set `RESEND_API_KEY` in your environment variables.
+- Set `EMAIL_FROM` (e.g. `Nocturne <noreply@yourdomain.com>`). **Note:** Production usage requires a verified domain at [resend.com/domains](https://resend.com/domains). If left unset, it defaults to `Nocturne <onboarding@resend.dev>` for testing/development.
+
 ## Local development
 
 1. Copy `.env.example` to `.env`.

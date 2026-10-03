@@ -8,6 +8,7 @@ import {
   sendPasswordChangedEmail,
   sendNewDeviceEmail,
   sendAccountDeletedEmail,
+  checkAndSendNewDeviceEmail,
 } from '../lib/emailService.js';
 
 export function createAuthRouter({ database, cookieOptions, sessionCookie, initializeUserData }) {
@@ -53,6 +54,14 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     legacyHeaders: false,
     keyGenerator: (request) => request.body?.email?.trim().toLowerCase() || request.ip,
     message: { error: 'Too many magic link requests. Please try again later.' },
+  });
+
+  const changePasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many password change attempts. Please try again later.' },
   });
 
   const verifyResendLimiter = rateLimit({
@@ -132,13 +141,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       userId = existingLegacy.id;
     }
 
-    let isNewUser = false;
     await database.transaction(async (tx) => {
-      const existingUserCheck = await tx.prepare('SELECT 1 FROM users WHERE id = $1').get(userId);
-      if (!existingUserCheck) {
-        isNewUser = true;
-      }
-
       await tx.prepare(`
         INSERT INTO users (id, supabase_uid, email, display_name, avatar_url, email_verified, legacy_auth)
         VALUES ($1, $2, $3, $4, $5, $6, COALESCE((SELECT legacy_auth FROM users WHERE id = $1), false))
@@ -157,7 +160,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     });
 
     const dbUser = await database.prepare(`
-      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt", welcomed_at AS "welcomedAt"
       FROM users WHERE id = $1
     `).get(userId);
 
@@ -172,8 +175,9 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       isPublic: Boolean(dbUser.isPublic),
     };
 
-    if (isNewUser && emailVerified) {
+    if (emailVerified && !dbUser.welcomedAt) {
       await sendWelcomeEmail(userObj).catch(() => {});
+      await database.prepare('UPDATE users SET welcomed_at = NOW() WHERE id = $1').run(dbUser.id);
     }
 
     return userObj;
@@ -195,15 +199,19 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Check if new device / signin event
-    const ip = request.ip;
+    const ip = request.ip || '127.0.0.1';
     const userAgent = request.get('user-agent');
-    await logAuthEvent(database, {
-      userId,
-      eventType: 'signin',
-      ip,
-      userAgent,
-    });
+    const acceptLanguage = request.get('accept-language');
+    const userRecord = await database.prepare('SELECT id, email, display_name AS "displayName" FROM users WHERE id = $1').get(userId);
+    if (userRecord) {
+      await checkAndSendNewDeviceEmail(database, userRecord, { ip, userAgent, acceptLanguage });
+      await logAuthEvent(database, {
+        userId,
+        eventType: 'signin',
+        ip,
+        userAgent,
+      });
+    }
   }
 
   router.get('/me', async (request, response) => {
@@ -480,7 +488,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       });
       return response.json({ sent: true });
     } catch {
-      return response.json({ sent: true }); // Always return { sent: true } to prevent email enumeration
+      return response.json({ sent: true });
     }
   });
 
@@ -590,7 +598,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
   });
 
   // Feature 4 & 7: Account Security & Sessions
-  router.post('/change-password', async (request, response) => {
+  router.post('/change-password', changePasswordLimiter, async (request, response) => {
     const sessionId = request.cookies[sessionCookie];
     if (!sessionId) return response.status(401).json({ error: 'Please log in' });
     const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
@@ -669,28 +677,6 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       metadata: { scope: 'all_others' }
     });
     return response.json({ success: true });
-  });
-
-  router.delete('/me', async (request, response) => {
-    const sessionId = request.cookies[sessionCookie];
-    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
-    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
-    if (!session) return response.status(401).json({ error: 'Please log in' });
-
-    const user = await database.prepare('SELECT id, email, display_name AS "displayName" FROM users WHERE id = $1 OR supabase_uid = $1').get(session.userId);
-    if (user) {
-      await database.prepare('UPDATE users SET deleted_at = NOW() WHERE id = $1').run(user.id);
-      await database.prepare('DELETE FROM sessions WHERE user_id = $1').run(user.id);
-      await logAuthEvent(database, {
-        userId: user.id,
-        eventType: 'account_deleted',
-        ip: request.ip,
-        userAgent: request.get('user-agent')
-      });
-      await sendAccountDeletedEmail(user);
-    }
-    response.clearCookie(sessionCookie, cookieOptions);
-    return response.status(204).end();
   });
 
   router.get('/activity', async (request, response) => {
