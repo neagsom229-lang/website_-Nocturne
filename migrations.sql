@@ -7,12 +7,22 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at TIMESTAMPTZ,
   email TEXT UNIQUE,
   password_hash TEXT,
+  supabase_uid TEXT UNIQUE,
+  email_verified BOOLEAN DEFAULT false,
+  legacy_auth BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT users_display_name_length_check CHECK (length(display_name) <= 60)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_case_insensitive
   ON users (LOWER(email)) WHERE email IS NOT NULL;
+
+-- Backfill email_verified for legacy users
+UPDATE users
+SET email_verified = true
+WHERE password_hash IS NOT NULL
+  AND deleted_at IS NULL
+  AND email_verified = false;
 
 CREATE TABLE IF NOT EXISTS follows (
   follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

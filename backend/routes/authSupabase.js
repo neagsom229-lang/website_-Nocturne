@@ -179,42 +179,67 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         FROM users WHERE lower(email) = $1 AND legacy_auth = true AND deleted_at IS NULL
       `).get(email);
 
-      if (legacyAccount && legacyAccount.passwordHash && await bcrypt.compare(password, legacyAccount.passwordHash)) {
-        if (!legacyAccount.emailVerified) {
-          return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
-        }
-
-        // Create Supabase user for legacy account migration
-        let supabaseUid = legacyAccount.id;
-        try {
-          const created = await supabaseAdmin.auth.admin.createUser({
-            email: legacyAccount.email,
-            password,
-            email_confirm: true,
-            user_metadata: { full_name: legacyAccount.displayName },
-          });
-          if (created.data?.user) {
-            supabaseUid = created.data.user.id;
-          }
-        } catch {}
-
-        // Mark legacy_auth = false and update supabase_uid
-        await database.prepare('UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2').run(supabaseUid, legacyAccount.id);
-
-        const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (signinError || !signinData.session) {
-          return response.status(401).json({ error: 'That email and password do not match' });
-        }
-
-        const user = {
-          id: legacyAccount.id,
-          email: legacyAccount.email,
-          displayName: legacyAccount.displayName,
-          emailVerified: true,
-        };
-        await createServerSession(response, user.id, signinData.session);
-        return response.json({ user });
+      const DUMMY_HASH = '$2b$10$' + 'x'.repeat(53);
+      if (!legacyAccount) {
+        await bcrypt.compare(password, DUMMY_HASH); // constant-time
+        return response.status(401).json({ error: 'That email and password do not match' });
       }
+
+      if (!legacyAccount.passwordHash || !(await bcrypt.compare(password, legacyAccount.passwordHash))) {
+        return response.status(401).json({ error: 'That email and password do not match' });
+      }
+
+      if (!legacyAccount.emailVerified) {
+        return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
+      }
+
+      // Create Supabase user for legacy account migration
+      let supabaseUid = legacyAccount.id;
+      try {
+        const created = await supabaseAdmin.auth.admin.createUser({
+          email: legacyAccount.email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: legacyAccount.displayName },
+        });
+        if (!created.data?.user) {
+          console.error('[auth] legacy migration: createUser returned no user', created.error);
+          return response.status(500).json({ error: 'migration_failed' });
+        }
+        supabaseUid = created.data.user.id;
+      } catch (err) {
+        // Idempotent: if email already exists in Supabase, fetch the existing user
+        if (err?.message?.includes('already') || err?.code === 'email_exists') {
+          const { data: existing } = await supabaseAdmin.auth.admin.listUsers();
+          const match = existing?.users?.find(u => u.email?.toLowerCase() === email);
+          if (match) {
+            supabaseUid = match.id;
+          } else {
+            return response.status(500).json({ error: 'migration_failed' });
+          }
+        } else {
+          console.error('[auth] legacy migration: createUser failed', err);
+          return response.status(500).json({ error: 'migration_failed' });
+        }
+      }
+
+      await database.prepare(
+        'UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2'
+      ).run(supabaseUid, legacyAccount.id);
+
+      const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (signinError || !signinData.session) {
+        return response.status(401).json({ error: 'That email and password do not match' });
+      }
+
+      const user = {
+        id: legacyAccount.id,
+        email: legacyAccount.email,
+        displayName: legacyAccount.displayName,
+        emailVerified: true,
+      };
+      await createServerSession(response, user.id, signinData.session);
+      return response.json({ user });
 
       return response.status(401).json({ error: 'That email and password do not match' });
     } catch (error) {

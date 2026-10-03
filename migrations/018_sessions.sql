@@ -1,4 +1,4 @@
--- Migration 017: Server-side sessions table for Supabase Auth token management
+-- Migration 018: Server-side sessions table for Supabase Auth token management
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

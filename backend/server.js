@@ -140,17 +140,20 @@ async function authenticate(request, response, next) {
       if (error || !data?.session) {
         await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
         response.clearCookie(sessionCookie, cookieOptions);
-        return response.status(401).json({ error: 'Your session expired. Please log in again.' });
+        if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+        return response.status(401).json({ error: 'Please log in to continue' });
       }
       const newExpiresAt = new Date(Date.now() + (data.session.expires_in || 3600) * 1000).toISOString();
       await db.prepare(`
         UPDATE sessions SET refresh_token = $1, access_token_expires_at = $2, last_used_at = NOW() WHERE id = $3
       `).run(data.session.refresh_token, newExpiresAt, sessionId);
-      userId = data.user.id;
+      // Do NOT overwrite userId with data.user.id — the session's user_id is authoritative
+      // Refresh only rotates the tokens, not the user identity
     } catch {
       await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
       response.clearCookie(sessionCookie, cookieOptions);
-      return response.status(401).json({ error: 'Your session expired. Please log in again.' });
+      if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+      return response.status(401).json({ error: 'Please log in to continue' });
     }
   } else {
     await db.prepare('UPDATE sessions SET last_used_at = NOW() WHERE id = $1').run(sessionId);
@@ -158,7 +161,9 @@ async function authenticate(request, response, next) {
 
   const user = await db.prepare(`
     SELECT id, email, display_name AS "displayName", deleted_at AS "deletedAt"
-    FROM users WHERE id = $1
+    FROM users
+    WHERE id = $1 OR supabase_uid = $1
+    LIMIT 1
   `).get(userId);
 
   if (!user || (user.deletedAt && !(
