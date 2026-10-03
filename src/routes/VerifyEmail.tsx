@@ -90,8 +90,8 @@ export function VerifyEmail() {
         {status === 'success' && (
           <>
             <p className="t-small t-mute">Your email has been successfully verified. You can now step into your room.</p>
-            <Link to="/auth/login" className="btn btn--primary auth-form__submit" style={{ textDecoration: 'none', marginTop: '14px' }}>
-              Sign in now
+            <Link to="/" className="btn btn--primary auth-form__submit" style={{ textDecoration: 'none', marginTop: '14px' }}>
+              Open Nocturne
               <Icon name="arrow-right" size={16} />
             </Link>
           </>

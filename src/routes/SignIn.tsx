@@ -4,15 +4,14 @@ import { Icon } from '../components/Icon';
 import { useAuth } from '../auth/AuthContext';
 
 export function SignIn() {
-  const { signInWithEmail, signInWithGoogle, signInWithFacebook, resendVerificationEmail, resetPassword } = useAuth();
+  const { signInWithEmail, signInWithGoogle, signInWithFacebook, resendVerificationEmail } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [forgotMode, setForgotMode] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const destination = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/';
@@ -33,18 +32,26 @@ export function SignIn() {
     }
   }
 
-  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleMagicLink() {
     if (!email) {
-      setError({ message: 'Please enter your email address first.' });
+      setError({ message: 'Please enter your email address first for a magic link.' });
       return;
     }
     setSubmitting(true);
+    setError(null);
     try {
-      await resetPassword(email);
-      setResetSent(true);
+      const res = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Could not send magic link');
+      }
+      setMagicSent(true);
     } catch (err: any) {
-      setError({ message: err?.message || 'Could not send password reset email.' });
+      setError({ message: err?.message || 'Could not send magic link' });
     } finally {
       setSubmitting(false);
     }
@@ -114,30 +121,13 @@ export function SignIn() {
         <h1 id="auth-title" className="t-h1">Come on in.</h1>
         <p className="t-small t-mute">Your listening room is right where you left it.</p>
 
-        {forgotMode ? (
-          <form className="auth-form" onSubmit={(e) => void handleResetPassword(e)}>
-            <p className="t-small">Enter your email and we’ll send a link to reset your password.</p>
-            {resetSent ? (
-              <p className="auth-form__error" style={{ background: 'color-mix(in srgb, #639f75 12%, var(--tp-surf))' }}>
-                Reset link sent to {email}. Check your inbox.
-              </p>
-            ) : (
-              <>
-                <label className="diary-field">
-                  <span>Email</span>
-                  <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@somewhere.com" />
-                </label>
-                {error ? <p className="auth-form__error" role="alert">{error.message}</p> : null}
-                <button type="submit" className="btn btn--primary auth-form__submit" disabled={submitting}>
-                  {submitting ? 'Sending reset link…' : 'Send password reset link'}
-                  <Icon name="arrow-right" size={16} />
-                </button>
-              </>
-            )}
-            <button type="button" className="btn" style={{ background: 'transparent', border: 'none', color: 'var(--tp-acc)', cursor: 'pointer', textAlign: 'center' }} onClick={() => { setForgotMode(false); setResetSent(false); setError(null); }}>
+        {magicSent ? (
+          <div className="auth-form">
+            <p className="t-small" style={{ color: '#639f75' }}>Magic link sent to {email}. Check your inbox to sign in instantly.</p>
+            <button type="button" className="btn btn--primary auth-form__submit" onClick={() => setMagicSent(false)}>
               Back to sign in
             </button>
-          </form>
+          </div>
         ) : (
           <form className="auth-form" onSubmit={(e) => void onSubmit(e)}>
             <label className="diary-field">
@@ -147,9 +137,9 @@ export function SignIn() {
             <label className="diary-field">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Password</span>
-                <button type="button" style={{ background: 'none', border: 'none', color: 'var(--tp-acc)', fontSize: '11px', cursor: 'pointer', padding: 0 }} onClick={() => setForgotMode(true)}>
+                <Link to="/auth/forgot-password" style={{ color: 'var(--tp-acc)', fontSize: '11px', textDecoration: 'none' }}>
                   Forgot password?
-                </button>
+                </Link>
               </div>
               <input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" />
             </label>
@@ -159,30 +149,46 @@ export function SignIn() {
               <Icon name="arrow-right" size={16} />
             </button>
 
+            <button
+              type="button"
+              className="btn"
+              style={{ background: 'transparent', border: '1px dashed var(--tp-acc)', color: 'var(--tp-acc)', minHeight: '38px', fontSize: '12px' }}
+              onClick={() => void handleMagicLink()}
+              disabled={submitting}
+            >
+              Email me a magic link
+            </button>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0', color: 'var(--tp-mute)', fontSize: '11px' }}>
               <div style={{ flex: 1, height: '1px', background: 'var(--tp-line)' }} />
               <span>or continue with</span>
               <div style={{ flex: 1, height: '1px', background: 'var(--tp-line)' }} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
               <button
                 type="button"
                 className="btn"
-                style={{ background: '#ffffff', color: '#1f1f1f', border: '1px solid var(--tp-line)', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: 500 }}
+                style={{ background: '#ffffff', color: '#1f1f1f', border: '1px solid var(--tp-line)', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
                 onClick={() => void signInWithGoogle()}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.19v3.15C3.17 21.32 7.23 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.19C.43 8.1 0 9.8 0 12s.43 3.9 1.19 5.42l4.09-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.23 0 3.17 2.68 1.19 6.58l4.09 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
                 Google
               </button>
               <button
                 type="button"
                 className="btn"
-                style={{ background: '#1877F2', color: '#ffffff', border: 'none', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: 500 }}
+                style={{ background: '#1877F2', color: '#ffffff', border: 'none', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
                 onClick={() => void signInWithFacebook()}
               >
-                <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                 Facebook
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{ background: '#000000', color: '#ffffff', border: 'none', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
+                onClick={() => alert('Apple sign-in requires Apple Developer configuration')}
+              >
+                Apple
               </button>
             </div>
             <p className="auth-form__privacy">Your password is stored securely. We never put it in the light.</p>

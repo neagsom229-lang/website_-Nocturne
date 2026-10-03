@@ -99,7 +99,7 @@ export function SignUp() {
             <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@somewhere.com" />
           </label>
           <label className="diary-field">
-            <span>Password (min 8 chars)</span>
+            <span>Password (min 8 chars, must contain 1 number or symbol)</span>
             <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
             {password ? (
               <div style={{ marginTop: '4px' }}>

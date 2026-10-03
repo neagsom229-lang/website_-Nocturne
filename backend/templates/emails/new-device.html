@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>New Sign-in Detected</title></head>
+<body style="font-family: sans-serif; background: #0f1117; color: #f3f4f6; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #181b22; border-radius: 12px; padding: 32px; border: 1px solid #2a2f3d;">
+    <h1 style="color: #a78bfa; font-size: 24px; margin-bottom: 16px;">New Sign-in from Unrecognized Device</h1>
+    <p style="color: #9ca3af; line-height: 1.6;">Hello {{displayName}}, we noticed a sign-in to your Nocturne account from a new device or browser.</p>
+    <div style="margin: 24px 0; padding: 16px; background: #232733; border-radius: 8px; color: #9ca3af; font-family: monospace;">
+      <div>IP Address: {{ip}}</div>
+      <div style="margin-top: 8px;">Device/Browser: {{userAgent}}</div>
+    </div>
+    <p style="color: #9ca3af; line-height: 1.6;">If this was you, you can ignore this email. If not, please change your password and revoke other sessions from your security settings.</p>
+  </div>
+</body>
+</html>

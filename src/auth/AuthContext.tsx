@@ -5,6 +5,7 @@ export type AuthUser = {
   email: string;
   displayName: string;
   emailVerified: boolean;
+  emailChangePending?: boolean;
   avatarUrl?: string | null;
   bio?: string | null;
   isPublic?: boolean;

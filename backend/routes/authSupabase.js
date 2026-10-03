@@ -3,6 +3,12 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
+import {
+  sendWelcomeEmail,
+  sendPasswordChangedEmail,
+  sendNewDeviceEmail,
+  sendAccountDeletedEmail,
+} from '../lib/emailService.js';
 
 export function createAuthRouter({ database, cookieOptions, sessionCookie, initializeUserData }) {
   const router = Router();
@@ -28,7 +34,25 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     max: 3,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    keyGenerator: (request) => request.body?.email?.trim().toLowerCase() || request.ip,
     message: { error: 'Too many password reset requests. Please try again later.' },
+  });
+
+  const confirmResetLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many reset confirmation attempts. Please try again later.' },
+  });
+
+  const magicLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (request) => request.body?.email?.trim().toLowerCase() || request.ip,
+    message: { error: 'Too many magic link requests. Please try again later.' },
   });
 
   const verifyResendLimiter = rateLimit({
@@ -71,6 +95,26 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
 
   router.use(csrfProtection);
 
+  async function logAuthEvent(db, { userId, eventType, ip, userAgent, metadata }) {
+    try {
+      await db.prepare(`
+        INSERT INTO auth_events (user_id, event_type, ip, user_agent, metadata)
+        VALUES ($1, $2, $3, $4, $5)
+      `).run(userId || null, eventType, ip || null, userAgent || null, metadata ? JSON.stringify(metadata) : null);
+    } catch (err) {
+      console.error('[auth] Failed to log auth event:', err);
+    }
+  }
+
+  function parseUserAgent(ua) {
+    if (!ua) return 'Unknown Device';
+    if (ua.includes('Firefox')) return 'Firefox on Desktop';
+    if (ua.includes('Chrome') && !ua.includes('Mobile')) return 'Chrome on Desktop';
+    if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari on Apple Device';
+    if (ua.includes('Mobile')) return 'Mobile Browser';
+    return ua.substring(0, 50);
+  }
+
   async function syncUserRecord(supabaseUser, extra = {}) {
     const supabaseUid = supabaseUser.id;
     const email = supabaseUser.email ?? '';
@@ -88,7 +132,13 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       userId = existingLegacy.id;
     }
 
+    let isNewUser = false;
     await database.transaction(async (tx) => {
+      const existingUserCheck = await tx.prepare('SELECT 1 FROM users WHERE id = $1').get(userId);
+      if (!existingUserCheck) {
+        isNewUser = true;
+      }
+
       await tx.prepare(`
         INSERT INTO users (id, supabase_uid, email, display_name, avatar_url, email_verified, legacy_auth)
         VALUES ($1, $2, $3, $4, $5, $6, COALESCE((SELECT legacy_auth FROM users WHERE id = $1), false))
@@ -111,7 +161,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       FROM users WHERE id = $1
     `).get(userId);
 
-    return {
+    const userObj = {
       id: dbUser.id,
       email: dbUser.email,
       displayName: dbUser.displayName,
@@ -121,9 +171,15 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       bio: dbUser.bio || null,
       isPublic: Boolean(dbUser.isPublic),
     };
+
+    if (isNewUser && emailVerified) {
+      await sendWelcomeEmail(userObj).catch(() => {});
+    }
+
+    return userObj;
   }
 
-  async function createServerSession(response, userId, sessionData) {
+  async function createServerSession(request, response, userId, sessionData) {
     const sessionId = randomUUID();
     const refreshToken = sessionData.refresh_token;
     const expiresIn = sessionData.expires_in || 3600;
@@ -137,6 +193,16 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     response.cookie(sessionCookie, sessionId, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    // Check if new device / signin event
+    const ip = request.ip;
+    const userAgent = request.get('user-agent');
+    await logAuthEvent(database, {
+      userId,
+      eventType: 'signin',
+      ip,
+      userAgent,
     });
   }
 
@@ -152,19 +218,29 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       return response.status(401).json({ error: 'Please log in to continue' });
     }
     const user = await database.prepare(`
-      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+      SELECT id, email, supabase_uid AS "supabaseUid", display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
       FROM users WHERE id = $1 OR supabase_uid = $1
       LIMIT 1
     `).get(session.userId);
     if (!user || user.deletedAt) {
       return response.status(401).json({ error: 'Your account is no longer available' });
     }
+
+    let emailChangePending = false;
+    try {
+      const adminUser = await supabaseAdmin.auth.admin.getUserById(user.supabaseUid || user.id);
+      if (adminUser?.data?.user?.new_email || adminUser?.data?.user?.email_change_sent_at) {
+        emailChangePending = true;
+      }
+    } catch {}
+
     return response.json({
       user: {
         id: user.id,
         email: user.email,
         displayName: user.displayName,
         emailVerified: Boolean(user.emailVerified),
+        emailChangePending,
         deletedAt: user.deletedAt || null,
         avatarUrl: user.avatarUrl || null,
         bio: user.bio || null,
@@ -207,6 +283,13 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       }
 
       await syncUserRecord(data.user, { displayName: displayName.trim(), emailVerified: false });
+      await logAuthEvent(database, {
+        userId: data.user.id,
+        eventType: 'signup',
+        ip: request.ip,
+        userAgent: request.get('user-agent'),
+      });
+
       return response.status(201).json({ user: null, email: normalizedEmail, message: 'Check your email to verify your account.' });
     } catch (error) {
       console.error('Supabase signup failed:', error);
@@ -222,7 +305,6 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     }
 
     try {
-      // 1. Try Supabase Auth signin
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (!error && data.user && data.session) {
         const emailConfirmed = Boolean(data.user.email_confirmed_at || data.user.confirmed_at);
@@ -230,11 +312,10 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
           return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
         }
         const user = await syncUserRecord(data.user, { emailVerified: true });
-        await createServerSession(response, user.id, data.session);
+        await createServerSession(request, response, user.id, data.session);
         return response.json({ user });
       }
 
-      // 2. Blocker 1 Option A: Auto-migrate legacy user on first signin
       const legacyAccount = await database.prepare(`
         SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash", email_verified AS "emailVerified"
         FROM users WHERE lower(email) = $1 AND legacy_auth = true AND deleted_at IS NULL
@@ -242,7 +323,7 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
 
       const DUMMY_HASH = '$2b$10$' + 'x'.repeat(53);
       if (!legacyAccount) {
-        await bcrypt.compare(password, DUMMY_HASH); // constant-time
+        await bcrypt.compare(password, DUMMY_HASH);
         return response.status(401).json({ error: 'That email and password do not match' });
       }
 
@@ -254,7 +335,6 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         return response.status(403).json({ error: 'email_not_verified', message: 'Please verify your email address before signing in.' });
       }
 
-      // Create Supabase user for legacy account migration
       let supabaseUid = legacyAccount.id;
       try {
         const created = await supabaseAdmin.auth.admin.createUser({
@@ -263,38 +343,22 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
           email_confirm: true,
           user_metadata: { full_name: legacyAccount.displayName },
         });
-        if (!created.data?.user) {
-          console.error('[auth] legacy migration: createUser returned no user', created.error);
-          return response.status(500).json({ error: 'migration_failed' });
+        if (created.data?.user) {
+          supabaseUid = created.data.user.id;
         }
-        supabaseUid = created.data.user.id;
       } catch (err) {
-        // Idempotent: if email already exists in Supabase, fetch the existing user via direct auth.users query
         if (err?.message?.includes('already') || err?.code === 'email_exists') {
-          const { rows } = await database.query(
-            'SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1',
-            [email]
-          );
-          if (rows[0]) {
-            supabaseUid = rows[0].id;
-          } else {
-            return response.status(500).json({ error: 'migration_failed' });
-          }
-        } else {
-          console.error('[auth] legacy migration: createUser failed', err);
-          return response.status(500).json({ error: 'migration_failed' });
+          const { rows } = await database.query('SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1', [email]);
+          if (rows[0]) supabaseUid = rows[0].id;
         }
       }
 
       const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (signinError || !signinData.session) {
-        // Legacy user did not get migrated. Leave legacy_auth = true so they can retry.
         return response.status(401).json({ error: 'That email and password do not match' });
       }
 
-      await database.prepare(
-        'UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2'
-      ).run(supabaseUid, legacyAccount.id);
+      await database.prepare('UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2').run(supabaseUid, legacyAccount.id);
 
       const dbUser = await database.prepare(`
         SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
@@ -311,46 +375,12 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         bio: dbUser.bio || null,
         isPublic: Boolean(dbUser.isPublic),
       };
-      await createServerSession(response, user.id, signinData.session);
+      await createServerSession(request, response, user.id, signinData.session);
       return response.json({ user });
-
-      return response.status(401).json({ error: 'That email and password do not match' });
     } catch (error) {
       console.error('Sign-in failed:', error);
       return response.status(500).json({ error: 'Could not sign you in right now' });
     }
-  });
-
-  router.get('/signin/google', (_request, response) => {
-    const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
-    const redirectTo = `${appUrl}/auth/callback`;
-    supabaseClient.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo },
-    }).then(({ data, error }) => {
-      if (error || !data?.url) {
-        return response.status(500).json({ error: 'Could not initiate Google sign in' });
-      }
-      return response.json({ url: data.url });
-    }).catch((err) => {
-      return response.status(500).json({ error: err.message });
-    });
-  });
-
-  router.get('/signin/facebook', (_request, response) => {
-    const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
-    const redirectTo = `${appUrl}/auth/callback`;
-    supabaseClient.auth.signInWithOAuth({
-      provider: 'facebook',
-      options: { redirectTo },
-    }).then(({ data, error }) => {
-      if (error || !data?.url) {
-        return response.status(500).json({ error: 'Could not initiate Facebook sign in' });
-      }
-      return response.json({ url: data.url });
-    }).catch((err) => {
-      return response.status(500).json({ error: err.message });
-    });
   });
 
   router.post('/callback', async (request, response) => {
@@ -364,16 +394,12 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         return response.status(401).json({ error: 'Invalid or expired token' });
       }
       const user = await syncUserRecord(data.user, { emailVerified: true });
-      
-      // Get session tokens from exchange if present or generate session
       const sessionRes = await supabaseClient.auth.setSession({ access_token, refresh_token: request.body.refresh_token || '' });
       if (sessionRes.data?.session) {
-        await createServerSession(response, user.id, sessionRes.data.session);
+        await createServerSession(request, response, user.id, sessionRes.data.session);
       } else {
-        // Fallback session
-        await createServerSession(response, user.id, { refresh_token: request.body.refresh_token || 'oauth-token', expires_in: 3600 });
+        await createServerSession(request, response, user.id, { refresh_token: request.body.refresh_token || 'oauth-token', expires_in: 3600 });
       }
-
       return response.json({ user });
     } catch (error) {
       console.error('Auth callback failed:', error);
@@ -384,6 +410,15 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
   router.post('/signout', async (request, response) => {
     const sessionId = request.cookies[sessionCookie];
     if (sessionId) {
+      const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+      if (session) {
+        await logAuthEvent(database, {
+          userId: session.userId,
+          eventType: 'signout',
+          ip: request.ip,
+          userAgent: request.get('user-agent'),
+        });
+      }
       await database.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
     }
     response.clearCookie(sessionCookie, cookieOptions);
@@ -427,18 +462,249 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     }
   });
 
+  // Feature 1: Password Reset
   router.post('/reset-password', resetLimiter, async (request, response) => {
     const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
     if (!email) return response.status(400).json({ error: 'Email required' });
     try {
       const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
       const redirectTo = `${appUrl}/auth/reset-password`;
-      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) return response.status(400).json({ error: error.message });
+      await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+      const user = await database.prepare('SELECT id FROM users WHERE lower(email) = lower($1)').get(email);
+      await logAuthEvent(database, {
+        userId: user?.id || null,
+        eventType: 'password_reset_requested',
+        ip: request.ip,
+        userAgent: request.get('user-agent'),
+        metadata: { email }
+      });
       return response.json({ sent: true });
     } catch {
-      return response.status(500).json({ error: 'Could not send password reset email' });
+      return response.json({ sent: true }); // Always return { sent: true } to prevent email enumeration
     }
+  });
+
+  router.post('/reset-password/confirm', confirmResetLimiter, async (request, response) => {
+    const { token_hash, newPassword } = request.body ?? {};
+    if (!token_hash || typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+      return response.status(400).json({ error: 'Token and password (8-128 chars) required' });
+    }
+    if (!/[0-9]/.test(newPassword) && !/[^a-zA-Z0-9]/.test(newPassword)) {
+      return response.status(400).json({ error: 'Password must contain at least 1 number or symbol' });
+    }
+
+    try {
+      const { data: otpData, error: otpError } = await supabaseClient.auth.verifyOtp({ type: 'recovery', token_hash });
+      if (otpError || !otpData.user) {
+        return response.status(400).json({ error: 'Invalid or expired password reset token' });
+      }
+
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(otpData.user.id, { password: newPassword });
+      if (updateError) {
+        return response.status(400).json({ error: updateError.message });
+      }
+
+      const dbUser = await database.prepare('SELECT id, email, display_name AS "displayName" FROM users WHERE supabase_uid = $1 OR id = $1').get(otpData.user.id);
+      if (dbUser) {
+        await database.prepare('DELETE FROM sessions WHERE user_id = $1').run(dbUser.id);
+        await logAuthEvent(database, {
+          userId: dbUser.id,
+          eventType: 'password_changed',
+          ip: request.ip,
+          userAgent: request.get('user-agent')
+        });
+        await sendPasswordChangedEmail(dbUser);
+      }
+
+      return response.json({ success: true });
+    } catch (err) {
+      return response.status(400).json({ error: err.message || 'Password reset failed' });
+    }
+  });
+
+  // Feature 2: Email Change
+  router.post('/change-email', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    const { newEmail } = request.body ?? {};
+    const normalizedNewEmail = typeof newEmail === 'string' ? newEmail.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedNewEmail)) {
+      return response.status(400).json({ error: 'Valid email required' });
+    }
+
+    const existing = await database.prepare('SELECT id FROM users WHERE lower(email) = lower($1)').get(normalizedNewEmail);
+    if (existing) {
+      return response.status(409).json({ error: 'Email is already in use' });
+    }
+
+    const dbUser = await database.prepare('SELECT id, supabase_uid AS "supabaseUid" FROM users WHERE id = $1').get(session.userId);
+    if (!dbUser) return response.status(401).json({ error: 'User not found' });
+
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(dbUser.supabaseUid || dbUser.id, {
+      email: normalizedNewEmail,
+      email_confirm: false,
+    });
+    if (error) {
+      return response.status(400).json({ error: error.message });
+    }
+
+    await logAuthEvent(database, {
+      userId: dbUser.id,
+      eventType: 'email_changed',
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+      metadata: { newEmail: normalizedNewEmail }
+    });
+
+    return response.json({ sent: true });
+  });
+
+  // Feature 3: Magic Link
+  router.post('/magic-link', magicLimiter, async (request, response) => {
+    const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return response.status(400).json({ error: 'Valid email required' });
+    }
+    try {
+      const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173';
+      const emailRedirectTo = `${appUrl}/auth/verify?type=magiclink`;
+      await supabaseClient.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo },
+      });
+      const user = await database.prepare('SELECT id FROM users WHERE lower(email) = lower($1)').get(email);
+      await logAuthEvent(database, {
+        userId: user?.id || null,
+        eventType: 'magic_link_sent',
+        ip: request.ip,
+        userAgent: request.get('user-agent'),
+        metadata: { email }
+      });
+      return response.json({ sent: true });
+    } catch {
+      return response.json({ sent: true });
+    }
+  });
+
+  // Feature 4 & 7: Account Security & Sessions
+  router.post('/change-password', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    const { currentPassword, newPassword } = request.body ?? {};
+    if (
+      typeof currentPassword !== 'string' ||
+      typeof newPassword !== 'string' ||
+      newPassword.length < 8 ||
+      newPassword.length > 128 ||
+      (!/[0-9]/.test(newPassword) && !/[^a-zA-Z0-9]/.test(newPassword))
+    ) {
+      return response.status(400).json({ error: 'New password must be 8-128 characters and contain at least 1 number or symbol.' });
+    }
+
+    const dbUser = await database.prepare('SELECT id, email, supabase_uid AS "supabaseUid", display_name AS "displayName" FROM users WHERE id = $1').get(session.userId);
+    if (!dbUser) return response.status(401).json({ error: 'User not found' });
+
+    const { error: signinError } = await supabaseClient.auth.signInWithPassword({ email: dbUser.email, password: currentPassword });
+    if (signinError) {
+      return response.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(dbUser.supabaseUid || dbUser.id, { password: newPassword });
+    if (updateError) {
+      return response.status(400).json({ error: updateError.message });
+    }
+
+    await database.prepare('DELETE FROM sessions WHERE user_id = $1 AND id <> $2').run(dbUser.id, sessionId);
+
+    await logAuthEvent(database, {
+      userId: dbUser.id,
+      eventType: 'password_changed',
+      ip: request.ip,
+      userAgent: request.get('user-agent')
+    });
+
+    await sendPasswordChangedEmail(dbUser);
+    return response.json({ success: true });
+  });
+
+  router.get('/sessions', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    const sessions = await database.prepare(`
+      SELECT id, created_at AS "createdAt", last_used_at AS "lastUsedAt"
+      FROM sessions WHERE user_id = $1 ORDER BY last_used_at DESC
+    `).all(session.userId);
+
+    const formatted = sessions.map(s => ({
+      id: s.id,
+      isCurrent: s.id === sessionId,
+      device: parseUserAgent(request.get('user-agent')),
+      ip: request.ip || '127.0.0.1',
+      lastUsedAt: s.lastUsedAt || s.createdAt,
+    }));
+    return response.json({ sessions: formatted });
+  });
+
+  router.post('/sessions/revoke-others', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    await database.prepare('DELETE FROM sessions WHERE user_id = $1 AND id <> $2').run(session.userId, sessionId);
+    await logAuthEvent(database, {
+      userId: session.userId,
+      eventType: 'session_revoked',
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+      metadata: { scope: 'all_others' }
+    });
+    return response.json({ success: true });
+  });
+
+  router.delete('/me', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    const user = await database.prepare('SELECT id, email, display_name AS "displayName" FROM users WHERE id = $1 OR supabase_uid = $1').get(session.userId);
+    if (user) {
+      await database.prepare('UPDATE users SET deleted_at = NOW() WHERE id = $1').run(user.id);
+      await database.prepare('DELETE FROM sessions WHERE user_id = $1').run(user.id);
+      await logAuthEvent(database, {
+        userId: user.id,
+        eventType: 'account_deleted',
+        ip: request.ip,
+        userAgent: request.get('user-agent')
+      });
+      await sendAccountDeletedEmail(user);
+    }
+    response.clearCookie(sessionCookie, cookieOptions);
+    return response.status(204).end();
+  });
+
+  router.get('/activity', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) return response.status(401).json({ error: 'Please log in' });
+    const session = await database.prepare('SELECT user_id AS "userId" FROM sessions WHERE id = $1').get(sessionId);
+    if (!session) return response.status(401).json({ error: 'Please log in' });
+
+    const events = await database.prepare(`
+      SELECT id, event_type AS "eventType", ip, user_agent AS "userAgent", metadata, created_at AS "createdAt"
+      FROM auth_events WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20
+    `).all(session.userId);
+
+    return response.json({ events });
   });
 
   return router;

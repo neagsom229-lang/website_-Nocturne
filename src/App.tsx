@@ -6,6 +6,9 @@ const SignIn = lazy(() => import('./routes/SignIn').then((module) => ({ default:
 const SignUp = lazy(() => import('./routes/SignUp').then((module) => ({ default: module.SignUp })));
 const AuthCallback = lazy(() => import('./routes/AuthCallback').then((module) => ({ default: module.AuthCallback })));
 const VerifyEmail = lazy(() => import('./routes/VerifyEmail').then((module) => ({ default: module.VerifyEmail })));
+const ForgotPassword = lazy(() => import('./routes/ForgotPassword').then((module) => ({ default: module.ForgotPassword })));
+const ResetPassword = lazy(() => import('./routes/ResetPassword').then((module) => ({ default: module.ResetPassword })));
+const SettingsSecurity = lazy(() => import('./routes/SettingsSecurity').then((module) => ({ default: module.SettingsSecurity })));
 const ProtectedRoutes = lazy(() => import('./auth/AuthRoutes').then((module) => ({ default: module.ProtectedRoutes })));
 
 const LandingPage = lazy(() => import('./routes/LandingPage').then((module) => ({ default: module.LandingPage })));
@@ -59,6 +62,8 @@ export function App() {
         <Route path="/auth/register" element={<SignUp />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/verify" element={<VerifyEmail />} />
+        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
         <Route path="/playlists/:id" element={<PlaylistDetailRoute />} />
         <Route path="/u/:id" element={<ProfilePage />} />
         <Route element={<ProtectedRoutes />}>
@@ -76,6 +81,7 @@ export function App() {
           <Route path="/podcasts/:id" element={<PodcastDetail />} />
           <Route path="/playlists" element={<PlaylistsPage />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/settings/security" element={<SettingsSecurity />} />
           <Route path="/mood" element={<DiaryHome />} />
           <Route path="/trending" element={<WorkspacePlaceholder title="Trending, softly." icon="trend-up" body="A calmer corner for the songs and stories people are finding tonight." />} />
           <Route path="/chat" element={<WorkspacePlaceholder title="A little room to talk." icon="message" body="Your conversations will find a home here. For now, start with the people you’ve matched with." />} />
