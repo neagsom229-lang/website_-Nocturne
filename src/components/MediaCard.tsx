@@ -181,7 +181,7 @@ export function MediaCard({
     >
       <div className="media-card__art">
         {media.thumbnail_url
-          ? <img src={media.thumbnail_url} alt="" loading="lazy" />
+          ? <img src={media.thumbnail_url} alt="" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/fallback-cover.svg'; e.currentTarget.onerror = null; }} />
           : <span className="media-card__fallback" aria-hidden="true" />}
         {showTypeBadge ? <span className="media-card__badge">{mediaTypeLabel(media.media_type)}</span> : null}
         {isUnsupported ? (

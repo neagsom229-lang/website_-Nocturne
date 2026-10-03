@@ -391,6 +391,46 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     }
   });
 
+  router.get('/signin/google', async (request, response) => {
+    try {
+      const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN?.split(',')[0] || 'http://localhost:5173';
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${appUrl}/auth/callback`,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error || !data?.url) {
+        return response.status(500).json({ error: 'oauth_init_failed' });
+      }
+      return response.json({ url: data.url });
+    } catch (err) {
+      console.error('[auth] google oauth init failed:', err);
+      return response.status(500).json({ error: 'oauth_init_failed' });
+    }
+  });
+
+  router.get('/signin/facebook', async (request, response) => {
+    try {
+      const appUrl = process.env.APP_URL || process.env.CORS_ORIGIN?.split(',')[0] || 'http://localhost:5173';
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: {
+          redirectTo: `${appUrl}/auth/callback`,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error || !data?.url) {
+        return response.status(500).json({ error: 'oauth_init_failed' });
+      }
+      return response.json({ url: data.url });
+    } catch (err) {
+      console.error('[auth] facebook oauth init failed:', err);
+      return response.status(500).json({ error: 'oauth_init_failed' });
+    }
+  });
+
   router.post('/callback', async (request, response) => {
     const { access_token } = request.body ?? {};
     if (!access_token) {
