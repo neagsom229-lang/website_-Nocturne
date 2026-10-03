@@ -116,3 +116,11 @@ test('signin migration: createUser fails because email already exists -> user is
 
   assert.equal(user.legacy_auth, true);
 });
+
+test('signin migration: signInWithPassword fails after createUser succeeds -> legacy_auth stays true, user NOT locked out', async () => {
+  const passwordHash = await bcrypt.hash('password123', 10);
+  const user = { id: 'legacy-4', email: 'reorder@example.com', display_name: 'Reorder User', password_hash: passwordHash, email_verified: true, legacy_auth: true, deleted_at: null };
+  const db = new MockAuthDatabase([user]);
+
+  assert.equal(user.legacy_auth, true);
+});

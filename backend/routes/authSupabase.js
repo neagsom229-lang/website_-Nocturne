@@ -86,12 +86,20 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       }
     });
 
+    const dbUser = await database.prepare(`
+      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+      FROM users WHERE id = $1
+    `).get(userId);
+
     return {
-      id: userId,
-      email,
-      displayName,
-      avatarUrl,
-      emailVerified,
+      id: dbUser.id,
+      email: dbUser.email,
+      displayName: dbUser.displayName,
+      emailVerified: Boolean(dbUser.emailVerified),
+      deletedAt: dbUser.deletedAt || null,
+      avatarUrl: dbUser.avatarUrl || null,
+      bio: dbUser.bio || null,
+      isPublic: Boolean(dbUser.isPublic),
     };
   }
 
@@ -111,6 +119,39 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
   }
+
+  router.get('/me', async (request, response) => {
+    const sessionId = request.cookies[sessionCookie];
+    if (!sessionId) {
+      return response.status(401).json({ error: 'Please log in to continue' });
+    }
+    const session = await database.prepare(`
+      SELECT user_id AS "userId" FROM sessions WHERE id = $1
+    `).get(sessionId);
+    if (!session) {
+      return response.status(401).json({ error: 'Please log in to continue' });
+    }
+    const user = await database.prepare(`
+      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+      FROM users WHERE id = $1 OR supabase_uid = $1
+      LIMIT 1
+    `).get(session.userId);
+    if (!user || user.deletedAt) {
+      return response.status(401).json({ error: 'Your account is no longer available' });
+    }
+    return response.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        emailVerified: Boolean(user.emailVerified),
+        deletedAt: user.deletedAt || null,
+        avatarUrl: user.avatarUrl || null,
+        bio: user.bio || null,
+        isPublic: Boolean(user.isPublic),
+      }
+    });
+  });
 
   router.post('/signup', signupLimiter, async (request, response) => {
     const { displayName, email, password } = request.body ?? {};
@@ -208,12 +249,14 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         }
         supabaseUid = created.data.user.id;
       } catch (err) {
-        // Idempotent: if email already exists in Supabase, fetch the existing user
+        // Idempotent: if email already exists in Supabase, fetch the existing user via direct auth.users query
         if (err?.message?.includes('already') || err?.code === 'email_exists') {
-          const { data: existing } = await supabaseAdmin.auth.admin.listUsers();
-          const match = existing?.users?.find(u => u.email?.toLowerCase() === email);
-          if (match) {
-            supabaseUid = match.id;
+          const { rows } = await database.query(
+            'SELECT id FROM auth.users WHERE lower(email) = $1 LIMIT 1',
+            [email]
+          );
+          if (rows[0]) {
+            supabaseUid = rows[0].id;
           } else {
             return response.status(500).json({ error: 'migration_failed' });
           }
@@ -223,20 +266,30 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
         }
       }
 
+      const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (signinError || !signinData.session) {
+        // Legacy user did not get migrated. Leave legacy_auth = true so they can retry.
+        return response.status(401).json({ error: 'That email and password do not match' });
+      }
+
       await database.prepare(
         'UPDATE users SET supabase_uid = $1, legacy_auth = false WHERE id = $2'
       ).run(supabaseUid, legacyAccount.id);
 
-      const { data: signinData, error: signinError } = await supabaseClient.auth.signInWithPassword({ email, password });
-      if (signinError || !signinData.session) {
-        return response.status(401).json({ error: 'That email and password do not match' });
-      }
+      const dbUser = await database.prepare(`
+        SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+        FROM users WHERE id = $1
+      `).get(legacyAccount.id);
 
       const user = {
-        id: legacyAccount.id,
-        email: legacyAccount.email,
-        displayName: legacyAccount.displayName,
-        emailVerified: true,
+        id: dbUser.id,
+        email: dbUser.email,
+        displayName: dbUser.displayName,
+        emailVerified: Boolean(dbUser.emailVerified),
+        deletedAt: dbUser.deletedAt || null,
+        avatarUrl: dbUser.avatarUrl || null,
+        bio: dbUser.bio || null,
+        isPublic: Boolean(dbUser.isPublic),
       };
       await createServerSession(response, user.id, signinData.session);
       return response.json({ user });

@@ -34,9 +34,24 @@ export function createUsersRouter({ database, authenticate }) {
   const router = Router();
 
   router.get('/me', authenticate, async (request, response) => {
-    const profile = await findProfile(database, request.user.id, request.user.id);
-    if (!profile) return response.status(404).json({ error: 'Profile not found.' });
-    return response.json({ profile });
+    const user = await database.prepare(`
+      SELECT id, email, display_name AS "displayName", avatar_url AS "avatarUrl", bio, is_public AS "isPublic", email_verified AS "emailVerified", deleted_at AS "deletedAt"
+      FROM users WHERE id = $1 OR supabase_uid = $1
+      LIMIT 1
+    `).get(request.user.id);
+    if (!user || user.deletedAt) return response.status(404).json({ error: 'Profile not found.' });
+    return response.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        emailVerified: Boolean(user.emailVerified),
+        deletedAt: user.deletedAt || null,
+        avatarUrl: user.avatarUrl || null,
+        bio: user.bio || null,
+        isPublic: Boolean(user.isPublic),
+      }
+    });
   });
 
   router.patch('/me', authenticate, async (request, response) => {
