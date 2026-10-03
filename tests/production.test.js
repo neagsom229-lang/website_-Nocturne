@@ -142,6 +142,18 @@ test('production server serves the app and isolates authenticated feature data',
     assert.equal(healthResponse.status, 200);
     assert.deepEqual(await healthResponse.json(), { status: 'ok' });
   });
+
+  await context.test('GET /signin/google and facebook return OAuth URLs', async () => {
+    const googleRes = await fetch(`${baseUrl}/api/auth/signin/google`);
+    assert.equal(googleRes.status, 200);
+    const googleBody = await googleRes.json();
+    assert.match(googleBody.url, /^https:\/\//);
+
+    const fbRes = await fetch(`${baseUrl}/api/auth/signin/facebook`);
+    assert.equal(fbRes.status, 200);
+    const fbBody = await fbRes.json();
+    assert.match(fbBody.url, /^https:\/\//);
+  });
   const databaseAddress = new URL(databaseUrl);
   assert.ok(
     logs.includes(`Connected to PostgreSQL at ${databaseAddress.hostname}:${databaseAddress.port || '5432'}`),
