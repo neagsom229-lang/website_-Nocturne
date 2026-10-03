@@ -5,8 +5,10 @@ dist-ssr
 .DS_Store
 .vite
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
+!.env.production
 *.sqlite
 *.sqlite3
 *.db
