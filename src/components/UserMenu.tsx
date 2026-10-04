@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from './Icon';
+import { useFocusTrap } from '../lib/useFocusTrap';
 
 export function UserMenu() {
   const { user, signOut } = useAuth();
@@ -10,6 +11,7 @@ export function UserMenu() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  useFocusTrap(menuRef, isOpen);
 
   const items = [
     { label: 'View profile', to: user ? `/u/${encodeURIComponent(user.id)}` : '/auth/login', icon: 'user' as const },
@@ -35,11 +37,9 @@ export function UserMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Focus trap and keyboard nav
+  // Keyboard navigation
   useEffect(() => {
     if (!isOpen || !menuRef.current) return;
-    const focusable = menuRef.current.querySelectorAll<HTMLElement>('[role="menuitem"], button, [href]');
-    if (focusable.length === 0) return;
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -64,16 +64,6 @@ export function UserMenu() {
             navigate(item.to);
             setIsOpen(false);
           }
-        }
-      } else if (e.key === 'Tab') {
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
         }
       }
     }

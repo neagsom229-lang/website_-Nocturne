@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Icon } from '../Icon';
-import { QueuePanel } from './QueuePanel';
 import type { ExternalMedia } from '../../lib/workspaceHooks';
+
+const QueuePanel = lazy(() => import('./QueuePanel').then((m) => ({ default: m.QueuePanel })));
 
 export function QueueButton({
   queue,
@@ -33,15 +34,17 @@ export function QueueButton({
         <Icon name="library" size={18} />
         {count > 0 && <span className="queue-badge">{badgeText}</span>}
       </button>
-      <QueuePanel
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        queue={queue}
-        currentIndex={currentIndex}
-        onClear={onClear}
-        onRemove={onRemove}
-        onSelectIndex={onSelectIndex}
-      />
+      <Suspense fallback={null}>
+        <QueuePanel
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          queue={queue}
+          currentIndex={currentIndex}
+          onClear={onClear}
+          onRemove={onRemove}
+          onSelectIndex={onSelectIndex}
+        />
+      </Suspense>
     </div>
   );
 }

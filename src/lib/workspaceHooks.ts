@@ -14,6 +14,7 @@ export type ExternalMedia = {
   streamUrl: string;
   externalUrl: string | null;
   createdAt?: string;
+  _originalIndex?: number;
 };
 
 export type WorkspacePlayer = {

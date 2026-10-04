@@ -8,6 +8,7 @@ import { useWorkspacePlayer } from '../../lib/workspaceHooks';
 import { QuickActions } from './QuickActions';
 import { RecentSearches } from './RecentSearches';
 import { CommandPaletteRow } from './CommandPaletteRow';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 import '../../styles/command-palette.css';
 
 export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -147,25 +148,7 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
   }
 
   // Focus trap
-  useEffect(() => {
-    if (!isOpen) return;
-    function trapFocus(e: KeyboardEvent) {
-      if (e.key !== 'Tab' || !modalRef.current) return;
-      const focusable = modalRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault(); last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault(); first.focus();
-      }
-    }
-    document.addEventListener('keydown', trapFocus);
-    return () => document.removeEventListener('keydown', trapFocus);
-  }, [isOpen]);
+  useFocusTrap(modalRef, isOpen);
 
   if (!isOpen) return null;
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
+import type { ExternalMedia } from '../../lib/workspaceHooks';
 
 export type RecommendationItem = {
   id: string;
@@ -12,13 +13,14 @@ export type RecommendationItem = {
   source?: string;
 };
 
-export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPlay: (item: any) => void }) {
+export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPlay: (item: ExternalMedia) => void }) {
   const [items, setItems] = useState<RecommendationItem[]>([]);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (!isIdle) {
       setVisible(false);
+      setItems([]);
       return;
     }
     const timer = window.setTimeout(async () => {
@@ -33,6 +35,7 @@ export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPla
         }
       } catch {
         setVisible(false);
+        setItems([]);
       }
     }, 2000);
 
@@ -50,7 +53,16 @@ export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPla
             key={`${item.source}-${item.id || idx}`}
             type="button"
             className="idle-recommendation-card"
-            onClick={() => onPlay(item)}
+            onClick={() => onPlay({
+              type: 'audio',
+              provider: (item.source as any) || 'audius',
+              externalId: item.id,
+              title: item.title,
+              artist: item.artist || null,
+              thumbnailUrl: item.thumbnail_url || null,
+              streamUrl: item.stream_url || '',
+              externalUrl: item.external_url || null,
+            })}
             title={`Play ${item.title}`}
           >
             {item.thumbnail_url ? (

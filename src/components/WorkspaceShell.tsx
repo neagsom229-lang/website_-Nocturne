@@ -26,7 +26,6 @@ import { useSleepTimer } from '../lib/useSleepTimer';
 import { usePlaybackModes } from '../lib/usePlaybackModes';
 import { IdleRecommendations } from './player/IdleRecommendations';
 import { QueueButton } from './player/QueueButton';
-import { SleepTimer } from './player/SleepTimer';
 import { WaveformPlaceholder } from './player/WaveformPlaceholder';
 import '../styles/top-bar.css';
 import '../styles/player-dock.css';
@@ -43,6 +42,7 @@ const YouTubePlayer = lazy(() => import('react-player/youtube'));
 const SoundCloudPlayer = lazy(() => import('react-player/soundcloud'));
 const FilePlayer = lazy(() => import('react-player/file'));
 const CommandPalette = lazy(() => import('./command-palette/CommandPalette'));
+const SleepTimer = lazy(() => import('./player/SleepTimer').then((m) => ({ default: m.SleepTimer })));
 
 const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
@@ -168,16 +168,7 @@ function PlayerDock() {
         {!track && (
           <IdleRecommendations
             isIdle={!track}
-            onPlay={(item) => playExternalMedia({
-              type: 'audio',
-              provider: item.source || 'audius',
-              externalId: item.id,
-              title: item.title,
-              artist: item.artist || null,
-              thumbnailUrl: item.thumbnail_url || null,
-              streamUrl: item.stream_url || '',
-              externalUrl: item.external_url || null,
-            })}
+            onPlay={(item) => playExternalMedia(item)}
           />
         )}
         {user && externalMedia ? (
@@ -280,11 +271,13 @@ function PlayerDock() {
           onRemove={removeFromQueue}
           onSelectIndex={() => {}}
         />
-        <SleepTimer
-          timerMode={timerMode}
-          timeLeftMinutes={timeLeftMinutes}
-          setTimer={setTimer}
-        />
+        <Suspense fallback={null}>
+          <SleepTimer
+            timerMode={timerMode}
+            timeLeftMinutes={timeLeftMinutes}
+            setTimer={setTimer}
+          />
+        </Suspense>
         <Icon name={volume === 0 ? 'volume-off' : 'volume'} size={17} />
         <label className="sr-only" htmlFor="workspace-player-volume">Volume</label>
         <input
@@ -344,6 +337,12 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setSleepToast('Sleep timer complete. Good night.');
     window.setTimeout(() => setSleepToast(''), 5000);
   });
+
+  useEffect(() => {
+    if (!shuffle) {
+      setExternalQueue((prev) => [...prev].sort((a: any, b: any) => (a._originalIndex ?? 0) - (b._originalIndex ?? 0)));
+    }
+  }, [shuffle]);
 
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette();
   const [isMac, setIsMac] = useState(true);
@@ -437,7 +436,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setBuffering(true);
     setNowPlaying(null);
     setExternalMedia(media);
-    setExternalQueue([media]);
+    setExternalQueue([{ ...media, _originalIndex: 0 }]);
     setExternalQueueIndex(0);
     setProgress(0);
     progressRef.current = 0;
@@ -453,11 +452,10 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   function playExternalQueue(queueList: ExternalMedia[]) {
     if (!queueList.length) return;
-    setExternalQueue(queueList);
+    const tagged = queueList.map((item, idx) => ({ ...item, _originalIndex: (item as any)._originalIndex ?? idx }));
+    setExternalQueue(tagged);
     setExternalQueueIndex(0);
-    playExternalMedia(queueList[0]);
-    setExternalQueue(queueList);
-    setExternalQueueIndex(0);
+    playExternalMedia(tagged[0]);
   }
 
   async function ensureExternalMediaSaved() {
@@ -529,14 +527,21 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     if (externalMedia) {
       let nextIndex = externalQueueIndex + direction;
       if (shuffle && direction === 1 && externalQueue.length > 1) {
-        nextIndex = Math.floor(Math.random() * externalQueue.length);
+        const unplayed = externalQueue
+          .map((_, i) => i)
+          .filter((i) => i > externalQueueIndex);
+        if (unplayed.length > 0) {
+          nextIndex = unplayed[Math.floor(Math.random() * unplayed.length)]!;
+        } else {
+          nextIndex = Math.floor(Math.random() * externalQueue.length);
+        }
       }
       const nextMedia = externalQueue[nextIndex];
       if (!nextMedia) {
         if (repeat === 'all' && externalQueue.length > 0) {
-          nextIndex = 0;
-          const firstMedia = externalQueue[0];
-          setExternalQueueIndex(0);
+          nextIndex = shuffle ? Math.floor(Math.random() * externalQueue.length) : 0;
+          const firstMedia = externalQueue[nextIndex];
+          setExternalQueueIndex(nextIndex);
           setExternalMedia(firstMedia);
           setExternalPlaying(true);
           setProgress(0);
@@ -843,10 +848,22 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                       seek(0);
                       setExternalPlaying(true);
                     } else if (externalQueueIndex < externalQueue.length - 1) {
-                      void skip(1);
+                      let nextIdx = externalQueueIndex + 1;
+                      if (shuffle) {
+                        const unplayed = externalQueue
+                          .map((_, i) => i)
+                          .filter((i) => i > externalQueueIndex);
+                        if (unplayed.length > 0) {
+                          nextIdx = unplayed[Math.floor(Math.random() * unplayed.length)]!;
+                        }
+                      }
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
+                      setExternalPlaying(true);
                     } else if (repeat === 'all' && externalQueue.length > 0) {
-                      setExternalQueueIndex(0);
-                      setExternalMedia(externalQueue[0]);
+                      const nextIdx = shuffle ? Math.floor(Math.random() * externalQueue.length) : 0;
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
                       setExternalPlaying(true);
                     } else {
                       setExternalPlaying(false);
@@ -878,10 +895,22 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                       seek(0);
                       setExternalPlaying(true);
                     } else if (externalQueueIndex < externalQueue.length - 1) {
-                      void skip(1);
+                      let nextIdx = externalQueueIndex + 1;
+                      if (shuffle) {
+                        const unplayed = externalQueue
+                          .map((_, i) => i)
+                          .filter((i) => i > externalQueueIndex);
+                        if (unplayed.length > 0) {
+                          nextIdx = unplayed[Math.floor(Math.random() * unplayed.length)]!;
+                        }
+                      }
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
+                      setExternalPlaying(true);
                     } else if (repeat === 'all' && externalQueue.length > 0) {
-                      setExternalQueueIndex(0);
-                      setExternalMedia(externalQueue[0]);
+                      const nextIdx = shuffle ? Math.floor(Math.random() * externalQueue.length) : 0;
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
                       setExternalPlaying(true);
                     } else {
                       setExternalPlaying(false);
@@ -912,10 +941,22 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                       seek(0);
                       setExternalPlaying(true);
                     } else if (externalQueueIndex < externalQueue.length - 1) {
-                      void skip(1);
+                      let nextIdx = externalQueueIndex + 1;
+                      if (shuffle) {
+                        const unplayed = externalQueue
+                          .map((_, i) => i)
+                          .filter((i) => i > externalQueueIndex);
+                        if (unplayed.length > 0) {
+                          nextIdx = unplayed[Math.floor(Math.random() * unplayed.length)]!;
+                        }
+                      }
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
+                      setExternalPlaying(true);
                     } else if (repeat === 'all' && externalQueue.length > 0) {
-                      setExternalQueueIndex(0);
-                      setExternalMedia(externalQueue[0]);
+                      const nextIdx = shuffle ? Math.floor(Math.random() * externalQueue.length) : 0;
+                      setExternalQueueIndex(nextIdx);
+                      setExternalMedia(externalQueue[nextIdx]);
                       setExternalPlaying(true);
                     } else {
                       setExternalPlaying(false);
@@ -974,10 +1015,22 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
               if (externalMedia) setExternalPlaying(true);
             } else if (externalMedia) {
               if (externalQueueIndex < externalQueue.length - 1) {
-                void skip(1);
+                let nextIdx = externalQueueIndex + 1;
+                if (shuffle) {
+                  const unplayed = externalQueue
+                    .map((_, i) => i)
+                    .filter((i) => i > externalQueueIndex);
+                  if (unplayed.length > 0) {
+                    nextIdx = unplayed[Math.floor(Math.random() * unplayed.length)]!;
+                  }
+                }
+                setExternalQueueIndex(nextIdx);
+                setExternalMedia(externalQueue[nextIdx]);
+                setExternalPlaying(true);
               } else if (repeat === 'all' && externalQueue.length > 0) {
-                setExternalQueueIndex(0);
-                setExternalMedia(externalQueue[0]);
+                const nextIdx = shuffle ? Math.floor(Math.random() * externalQueue.length) : 0;
+                setExternalQueueIndex(nextIdx);
+                setExternalMedia(externalQueue[nextIdx]);
                 setExternalPlaying(true);
               } else {
                 setExternalPlaying(false);
