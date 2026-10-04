@@ -173,7 +173,7 @@ export function MediaCard({
 
   return (
     <article
-      className={`media-card${media.media_type === 'music' ? ' media-card--square' : ''}`}
+      className={`media-card card-hover${media.media_type === 'music' ? ' media-card--square' : ''}`}
       onMouseEnter={prefetch}
       onMouseLeave={clearPrefetch}
       onFocus={prefetch}

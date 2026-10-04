@@ -1791,3 +1791,102 @@
   margin-top: 14px;
 }
 
+/* Commit 5: Micro-interactions with prefers-reduced-motion: no-preference */
+
+@media (prefers-reduced-motion: no-preference) {
+  .media-card,
+  .media-card.card-hover,
+  .idle-recommendation-card,
+  .queue-item,
+  .playlist-item,
+  .playlist-card,
+  .discovery-playlist-card {
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .media-card:hover,
+  .media-card.card-hover:hover,
+  .idle-recommendation-card:hover,
+  .queue-item:hover,
+  .playlist-item:hover,
+  .playlist-card:hover,
+  .discovery-playlist-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .media-card:hover img,
+  .media-card.card-hover:hover img,
+  .idle-recommendation-card:hover img,
+  .queue-item:hover img,
+  .playlist-item:hover img,
+  .playlist-card:hover img,
+  .discovery-playlist-card:hover img {
+    transform: scale(1.04);
+    transition: transform 150ms ease;
+  }
+
+  button:active,
+  .btn:active,
+  .iconbtn:active {
+    transform: scale(0.97);
+    transition: transform 100ms ease;
+  }
+
+  .workspace-nav-link {
+    position: relative;
+    overflow: hidden;
+  }
+  .workspace-nav-link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.04);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 150ms ease;
+    z-index: 0;
+  }
+  .workspace-nav-link:hover::before {
+    transform: scaleX(1);
+  }
+
+  @keyframes route-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+  .route-outlet > * {
+    animation: route-fade-in 150ms ease-out;
+  }
+
+  @keyframes toast-in {
+    0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+    60% { opacity: 1; transform: translateY(-4px) scale(1.02); }
+    100% { opacity: 1; transform: none; }
+  }
+  .toast {
+    animation: toast-in 250ms cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  }
+
+  .workspace-player__toggle:hover {
+    box-shadow: 0 0 20px rgba(244, 182, 63, 0.4);
+    transition: box-shadow 150ms ease;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .skeleton,
+  .media-skeleton,
+  .media-skeleton__art,
+  .media-skeleton__line,
+  .discovery-skeleton {
+    background: linear-gradient(90deg,
+      rgba(255,255,255,0.04) 0%,
+      rgba(255,255,255,0.10) 50%,
+      rgba(255,255,255,0.04) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+}
+
+

@@ -810,7 +810,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             <UserMenu />
           </header> : null}
 
-          <main className="workspace-content" key={location.pathname}>
+          <main className="workspace-content route-outlet" key={location.pathname}>
             {children ?? <Outlet />}
           </main>
         </div>
