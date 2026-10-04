@@ -32,6 +32,7 @@ export function AuthCallback() {
       console.info('[callback] URL:', window.location.href);
       console.info('[callback] hash:', window.location.hash.slice(0, 50));
       console.info('[callback] search:', window.location.search);
+      console.info('[callback] supabase flow type:', (supabase.auth as any).flowType);
       
       try {
         const params = new URLSearchParams(window.location.search);
@@ -64,6 +65,10 @@ export function AuthCallback() {
         if (!res.ok) throw new Error(body.error || `Callback failed: ${res.status}`);
         
         await supabase.auth.signOut();
+        
+        if (window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
         
         // Verify cookie is set before redirecting
         const meRes = await fetch('/api/auth/me', { credentials: 'same-origin' });
