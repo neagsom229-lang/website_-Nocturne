@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 export type AuthUser = {
   id: string;
@@ -55,8 +55,12 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | undefined | null>(undefined);
   const [loading, setLoading] = useState(true);
+  const checkedRef = useRef(false);
 
   useEffect(() => {
+    if (checkedRef.current) return;
+    checkedRef.current = true;
+
     let active = true;
     async function checkAuth(retries = 2, delayMs = 500) {
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -80,6 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (attempt < retries) {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
           } else {
+            if (status >= 500 && active) {
+              console.error('[auth] check failed:', error);
+            }
             if (active) {
               setUser(null);
               setLoading(false);
@@ -115,20 +122,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithGoogle() {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/google');
-    if (url && ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
-      window.location.href = url;
-    } else {
-      throw new Error('Unexpected OAuth redirect URL');
+    console.info('[oauth] received url:', url, 'type:', typeof url);
+    if (!url) {
+      throw new Error('OAuth URL is empty — check SUPABASE_URL and SUPABASE_ANON_KEY on the local backend');
     }
+    if (!ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+      throw new Error(`OAuth URL not in allowlist: ${url}`);
+    }
+    window.location.href = url;
   }
 
   async function signInWithFacebook() {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/facebook');
-    if (url && ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
-      window.location.href = url;
-    } else {
-      throw new Error('Unexpected OAuth redirect URL');
+    console.info('[oauth] received url:', url, 'type:', typeof url);
+    if (!url) {
+      throw new Error('OAuth URL is empty — check SUPABASE_URL and SUPABASE_ANON_KEY on the local backend');
     }
+    if (!ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+      throw new Error(`OAuth URL not in allowlist: ${url}`);
+    }
+    window.location.href = url;
   }
 
   async function signOut() {
@@ -161,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const value = useContext(AuthContext);
-  if (!value) throw new Error('useAuth must be used inside AuthProvider');
-  return value;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  return context;
 }

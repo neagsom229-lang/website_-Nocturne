@@ -45,7 +45,7 @@ const FilePlayer = lazy(() => import('react-player/file'));
 const CommandPalette = lazy(() => import('./command-palette/CommandPalette'));
 const SleepTimer = lazy(() => import('./player/SleepTimer').then((m) => ({ default: m.SleepTimer })));
 
-const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+const DEMO_AUDIO_URL = 'https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne';
 
 type NavigationItem = {
   label: string;

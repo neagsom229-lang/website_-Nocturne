@@ -223,7 +223,7 @@ const seed = () => db.transaction((tx) => {
       (id, show_id, title, summary, duration_seconds, published, season, episode_number, audio_url, sort_order)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`);
   for (const [sortOrder, episode] of seedEpisodes.entries()) {
-    insertEpisode.run(...episode, 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', sortOrder);
+    insertEpisode.run(...episode, 'https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne', sortOrder);
   }
 
   const saveEpisode = tx.prepare('INSERT INTO podcast_listen_later (user_id, episode_id) VALUES ($1, $2) ON CONFLICT DO NOTHING');

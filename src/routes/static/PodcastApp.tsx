@@ -33,7 +33,7 @@ const PODCAST_TABS = [
   { to: '/static/saved', label: 'Later', icon: 'bookmark' as const },
 ];
 
-const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+const DEMO_AUDIO_URL = 'https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne';
 
 function PodcastFrame({ children }: { children: ReactNode }) {
   return (
