@@ -32,6 +32,11 @@ if (!jwtSecret || jwtSecret.length < 32) {
   throw new Error('JWT_SECRET must be set to a random secret of at least 32 characters.');
 }
 
+console.info(`[env] TMDB_API_KEY: ${process.env.TMDB_API_KEY ? 'configured' : 'MISSING'}`);
+console.info(`[env] YOUTUBE_API_KEY: ${process.env.YOUTUBE_API_KEY ? 'configured' : 'MISSING'}`);
+console.info(`[env] SUPABASE_URL: ${process.env.SUPABASE_URL ? 'configured' : 'MISSING'}`);
+console.info(`[env] SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'configured' : 'MISSING'}`);
+
 const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173')
   .split(',')
   .map((origin) => origin.trim())

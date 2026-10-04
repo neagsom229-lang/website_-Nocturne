@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_url TEXT,
   is_public BOOLEAN NOT NULL DEFAULT false,
   deleted_at TIMESTAMPTZ,
+  welcomed_at TIMESTAMPTZ,
+  deletion_scheduled_for TIMESTAMPTZ,
   email TEXT UNIQUE,
   password_hash TEXT,
   supabase_uid TEXT UNIQUE,

@@ -269,6 +269,25 @@ const seed = () => db.transaction((tx) => {
 export async function initializeDatabase() {
   await seed();
   try {
+    const expectedColumns = [
+      'id', 'display_name', 'bio', 'avatar_url', 'is_public',
+      'deleted_at', 'welcomed_at', 'deletion_scheduled_for', 'email',
+      'password_hash', 'supabase_uid', 'email_verified', 'legacy_auth', 'created_at'
+    ];
+    const { rows } = await db.query(`
+      SELECT column_name FROM information_schema.columns WHERE table_name = 'users'
+    `);
+    const existing = new Set(rows.map(r => r.column_name));
+    for (const col of expectedColumns) {
+      if (!existing.has(col)) {
+        console.warn(`[db] WARNING: Expected column '${col}' is missing from 'users' table.`);
+      }
+    }
+  } catch (error) {
+    console.debug('Could not verify users table columns:', error.message);
+  }
+
+  try {
     const constraintCheck = await db.prepare(`
       SELECT pg_get_constraintdef(oid) AS def
       FROM pg_constraint

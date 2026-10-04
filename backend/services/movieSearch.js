@@ -14,7 +14,7 @@ async function requestTmdb(path, params = {}, cacheKey) {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) {
     console.warn('[tmdb] TMDB_API_KEY is not configured.');
-    return { results: [], degraded: true, reason: 'tmdb_unconfigured' };
+    return { results: [], degraded: true, reason: 'tmdb_not_configured' };
   }
 
   const url = new URL(`${TMDB_API}${path}`);
