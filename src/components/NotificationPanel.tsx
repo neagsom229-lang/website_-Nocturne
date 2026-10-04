@@ -25,6 +25,33 @@ export function NotificationPanel({ isOpen, onClose }: { isOpen: boolean; onClos
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
+  // Focus trap
+  useEffect(() => {
+    if (!isOpen || !panelRef.current) return;
+    const focusable = panelRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -62,8 +89,9 @@ export function NotificationPanel({ isOpen, onClose }: { isOpen: boolean; onClos
           ) : (
             <div className="notification-panel__list">
               {displayItems.map((item) => (
-                <div
+                <button
                   key={item.id}
+                  type="button"
                   className={`notification-item ${item.read ? '' : 'is-unread'}`}
                   onClick={() => handleItemClick(item.id)}
                 >
@@ -77,7 +105,7 @@ export function NotificationPanel({ isOpen, onClose }: { isOpen: boolean; onClos
                     </div>
                     <p className="notification-item__body">{item.body}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

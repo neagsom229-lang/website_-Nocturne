@@ -82,6 +82,7 @@ export function App() {
           <Route path="/playlists" element={<PlaylistsPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/security" element={<SettingsSecurity />} />
+          <Route path="/notifications" element={<WorkspacePlaceholder title="Notifications" icon="bell" body="All your notifications and updates will live here." />} />
           <Route path="/mood" element={<DiaryHome />} />
           <Route path="/trending" element={<WorkspacePlaceholder title="Trending, softly." icon="trend-up" body="A calmer corner for the songs and stories people are finding tonight." />} />
           <Route path="/chat" element={<WorkspacePlaceholder title="A little room to talk." icon="message" body="Your conversations will find a home here. For now, start with the people you’ve matched with." />} />

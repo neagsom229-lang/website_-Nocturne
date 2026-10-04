@@ -470,7 +470,7 @@ export function WorkspacePlaceholder({
   title: string;
   eyebrow?: string;
   body: string;
-  icon?: 'sparkle' | 'users' | 'settings' | 'moon' | 'trend-up' | 'message';
+  icon?: 'sparkle' | 'users' | 'settings' | 'moon' | 'trend-up' | 'message' | 'bell';
 }) {
   return (
     <section className="workspace-placeholder">

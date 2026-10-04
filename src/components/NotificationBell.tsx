@@ -8,14 +8,14 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    const checkUnread = () => {
+    const update = () => {
       const items = getStoredNotifications();
       setUnreadCount(items.filter((n) => !n.read).length);
     };
-    checkUnread();
-    const interval = setInterval(checkUnread, 2000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
+    update();
+    window.addEventListener('notifications:changed', update);
+    return () => window.removeEventListener('notifications:changed', update);
+  }, []);
 
   const badgeText = unreadCount > 9 ? '9+' : String(unreadCount);
 

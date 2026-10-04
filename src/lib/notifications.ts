@@ -52,6 +52,7 @@ export function getStoredNotifications(): NotificationItem[] {
 export function saveStoredNotifications(items: NotificationItem[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    window.dispatchEvent(new Event('notifications:changed'));
   } catch {}
 }
 

@@ -141,9 +141,9 @@ describe('discovery home and shelf', () => {
     await waitFor(() => expect(carousel.getAttribute('data-active-index')).toBe('0'));
     expect(screen.getByRole('button', { name: 'Pause carousel' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next slide' }));
-    expect(carousel.getAttribute('data-active-index')).toBe('1');
+    await waitFor(() => expect(carousel.getAttribute('data-active-index')).toBe('1'));
     fireEvent.click(screen.getByRole('button', { name: 'Previous slide' }));
-    expect(carousel.getAttribute('data-active-index')).toBe('0');
+    await waitFor(() => expect(carousel.getAttribute('data-active-index')).toBe('0'));
   });
 
   it('scroll buttons move the shelf scroller', () => {
