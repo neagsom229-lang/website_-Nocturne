@@ -327,6 +327,16 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     }
   });
 
+  const sidebarBodyRef = useRef<HTMLDivElement>(null);
+  const lastUserScrollRef = useRef(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    if (sidebarBodyRef.current && now - lastUserScrollRef.current > 5000) {
+      sidebarBodyRef.current.scrollTop = 0;
+    }
+  }, [location.pathname, location.search]);
+
   const { queue, addToQueue, removeFromQueue, clearQueue, reorderQueue } = useQueue(externalQueue);
   const { shuffle, repeat, toggleShuffle, cycleRepeat } = usePlaybackModes();
   const [sleepToast, setSleepToast] = useState('');
