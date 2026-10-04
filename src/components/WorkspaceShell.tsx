@@ -4,7 +4,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -18,7 +17,8 @@ import { AddToPlaylistButton } from './AddToPlaylistButton';
 import { Icon, type IconName } from './Icon';
 import type { Mix, Track } from '../data/types';
 import { formatClock } from '../lib/hooks';
-import { saveMedia, searchSuggest, type SuggestionItem } from '../lib/mediaApi';
+import { saveMedia } from '../lib/mediaApi';
+import { useCommandPalette } from '../lib/useCommandPalette';
 import {
   fetchMixes,
   fetchNowPlaying,
@@ -31,6 +31,7 @@ export { useOptionalWorkspacePlayer, useWorkspacePlayer } from '../lib/workspace
 const YouTubePlayer = lazy(() => import('react-player/youtube'));
 const SoundCloudPlayer = lazy(() => import('react-player/soundcloud'));
 const FilePlayer = lazy(() => import('react-player/file'));
+const CommandPalette = lazy(() => import('./command-palette/CommandPalette'));
 
 const DEMO_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
@@ -235,19 +236,6 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [signOutError, setSignOutError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('nocturne_recent_searches') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [recentlyPlayed, setRecentlyPlayed] = useState<Array<{ id: string; title: string; artist?: string }>>(() => {
     try {
@@ -256,6 +244,12 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       return [];
     }
   });
+
+  const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette();
+  const [isMac, setIsMac] = useState(true);
+  useEffect(() => {
+    setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+  }, []);
 
   function toggleGroup(groupLabel: string) {
     setCollapsedGroups((prev) => ({ ...prev, [groupLabel]: !prev[groupLabel] }));
@@ -268,106 +262,6 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       localStorage.setItem('nocturne_play_history', JSON.stringify(next));
       setRecentlyPlayed(next);
     } catch {}
-  }
-
-  const suggestCacheRef = useRef<Map<string, { time: number; data: SuggestionItem[] }>>(new Map());
-  const searchContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (q.length < 2) {
-      setSuggestions([]);
-      setSuggestLoading(false);
-      return;
-    }
-
-    const cached = suggestCacheRef.current.get(q);
-    const now = Date.now();
-    if (cached && now - cached.time < 300000) {
-      setSuggestions(cached.data);
-      setSuggestLoading(false);
-      return;
-    }
-
-    let active = true;
-    setSuggestLoading(true);
-    const timer = setTimeout(() => {
-      searchSuggest(q)
-        .then((items) => {
-          if (!active) return;
-          suggestCacheRef.current.set(q, { time: Date.now(), data: items });
-          setSuggestions(items);
-        })
-        .catch(() => {
-          if (active) setSuggestions([]);
-        })
-        .finally(() => {
-          if (active) setSuggestLoading(false);
-        });
-    }, 250);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [searchQuery]);
-
-  function saveRecentSearch(queryStr: string) {
-    if (!queryStr.trim()) return;
-    const updated = [queryStr, ...recentSearches.filter((s) => s !== queryStr)].slice(0, 10);
-    setRecentSearches(updated);
-    localStorage.setItem('nocturne_recent_searches', JSON.stringify(updated));
-  }
-
-  function submitSearch(event?: FormEvent) {
-    if (event) event.preventDefault();
-    const query = searchQuery.trim();
-    if (query) {
-      saveRecentSearch(query);
-      navigate(`/search?q=${encodeURIComponent(query)}`);
-    } else {
-      navigate('/search');
-    }
-    setShowDropdown(false);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    const listCount = searchQuery.trim().length >= 2 ? suggestions.length : (searchQuery.trim() === '' ? recentSearches.length : 0);
-    if (!showDropdown || listCount === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % listCount);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + listCount) % listCount);
-    } else if (e.key === 'Enter' && selectedIndex >= 0) {
-      e.preventDefault();
-      if (searchQuery.trim().length >= 2 && suggestions[selectedIndex]) {
-        const item = suggestions[selectedIndex];
-        saveRecentSearch(item.title);
-        setSearchQuery(item.title);
-        setShowDropdown(false);
-        navigate(`/search?q=${encodeURIComponent(item.title)}`);
-      } else if (searchQuery.trim() === '' && recentSearches[selectedIndex]) {
-        const queryStr = recentSearches[selectedIndex];
-        setSearchQuery(queryStr);
-        setShowDropdown(false);
-        navigate(`/search?q=${encodeURIComponent(queryStr)}`);
-      }
-    } else if (e.key === 'Escape') {
-      setShowDropdown(false);
-    }
   }
 
   useEffect(() => {
@@ -773,93 +667,18 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             >
               <Icon name="menu" size={21} />
             </button>
-            <div className="workspace-search-container" ref={searchContainerRef}>
-              <form className="workspace-search" role="search" onSubmit={submitSearch}>
+            <div className="workspace-search-container">
+              <button
+                type="button"
+                className="workspace-search"
+                onClick={() => openPalette()}
+                aria-label="Open command palette"
+                style={{ cursor: 'pointer', textAlign: 'left', border: '1px solid var(--tp-line)', background: 'color-mix(in oklab, var(--tp-surf) 72%, transparent)' }}
+              >
                 <Icon name="search" size={19} />
-                <input
-                  type="search"
-                  aria-label="Search Nocturne"
-                  placeholder="Search songs, stories, people..."
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setShowDropdown(true);
-                    setSelectedIndex(-1);
-                  }}
-                  onFocus={() => setShowDropdown(true)}
-                  onKeyDown={handleKeyDown}
-                />
-                <button type="submit" aria-label="Submit search"><kbd>Enter</kbd></button>
-              </form>
-
-              {showDropdown && (
-                <div className="workspace-search__dropdown" role="listbox">
-                  {searchQuery.trim().length >= 2 ? (
-                    suggestLoading ? (
-                      <div className="workspace-search__suggestion-item" style={{ justifyContent: 'center', color: 'var(--tp-mute)' }}>
-                        <span className="route-loading__spinner" style={{ width: 14, height: 14 }} />
-                        <span>Searching suggestions…</span>
-                      </div>
-                    ) : suggestions.length > 0 ? (
-                      suggestions.map((item, index) => (
-                        <button
-                          key={`${item.source}-${item.id}`}
-                          type="button"
-                          role="option"
-                          aria-selected={selectedIndex === index}
-                          className={`workspace-search__suggestion-item ${selectedIndex === index ? 'is-selected' : ''}`}
-                          onClick={() => {
-                            saveRecentSearch(item.title);
-                            setSearchQuery(item.title);
-                            setShowDropdown(false);
-                            navigate(`/search?q=${encodeURIComponent(item.title)}`);
-                          }}
-                        >
-                          {item.thumbnail_url ? (
-                            <img src={item.thumbnail_url} alt="" className="workspace-search__suggestion-thumb" />
-                          ) : (
-                            <div className="workspace-search__suggestion-thumb" style={{ background: 'var(--tp-surf-2)', display: 'grid', placeItems: 'center' }}>
-                              <Icon name="search" size={14} />
-                            </div>
-                          )}
-                          <div className="workspace-search__suggestion-info">
-                            <span className="workspace-search__suggestion-title">{item.title}</span>
-                            <span className="workspace-search__suggestion-badge">{item.media_type} ({item.source})</span>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="workspace-search__suggestion-item" style={{ color: 'var(--tp-mute)' }}>
-                        <span>No suggestions found. Press Enter to search.</span>
-                      </div>
-                    )
-                  ) : searchQuery.trim() === '' && recentSearches.length > 0 ? (
-                    <>
-                      <div className="workspace-search__dropdown-footer" style={{ borderBottom: '1px solid var(--tp-line)' }}>
-                        <span>Recent searches</span>
-                        <button type="button" onClick={() => { setRecentSearches([]); localStorage.removeItem('nocturne_recent_searches'); }}>Clear all</button>
-                      </div>
-                      {recentSearches.map((queryStr, index) => (
-                        <button
-                          key={queryStr}
-                          type="button"
-                          role="option"
-                          aria-selected={selectedIndex === index}
-                          className={`workspace-search__recent-item ${selectedIndex === index ? 'is-selected' : ''}`}
-                          onClick={() => {
-                            setSearchQuery(queryStr);
-                            setShowDropdown(false);
-                            navigate(`/search?q=${encodeURIComponent(queryStr)}`);
-                          }}
-                        >
-                          <Icon name="search" size={14} />
-                          <span>{queryStr}</span>
-                        </button>
-                      ))}
-                    </>
-                  ) : null}
-                </div>
-              )}
+                <span style={{ flex: 1, color: 'var(--tp-mute)', fontSize: '13px' }}>Search songs, stories, people…</span>
+                <kbd>{isMac ? '⌘K' : 'Ctrl+K'}</kbd>
+              </button>
             </div>
             <button
               type="button"
@@ -916,6 +735,10 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             {children ?? <Outlet />}
           </main>
         </div>
+
+        <Suspense fallback={null}>
+          <CommandPalette isOpen={isPaletteOpen} onClose={closePalette} />
+        </Suspense>
 
         {externalMedia?.type === 'video' || externalMedia?.provider === 'soundcloud' ? (
           <div
