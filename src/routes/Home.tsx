@@ -5,6 +5,8 @@ import { MediaCard } from '../components/MediaCard';
 import { Shelf } from '../components/Shelf';
 import { WorkspaceShell, useOptionalWorkspacePlayer } from '../components/WorkspaceShell';
 import { Icon } from '../components/Icon';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { useBreadcrumbs } from '../lib/useBreadcrumbs';
 import { fetchMovieDetails } from '../lib/moviesApi';
 import { getFollowingFeed } from '../lib/socialApi';
 import {
@@ -154,8 +156,10 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
     <MediaCard media={media} onPlay={(item) => void play(item)} />
   );
 
+  const crumbs = useBreadcrumbs();
   return (
     <div className="discovery-home">
+      <Breadcrumbs items={crumbs} />
       {failedCount >= 3 ? (
         <div className="discovery-banner-error" role="alert" style={{ background: 'var(--color-surface-elevated, #222)', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>Some sections are temporarily unavailable. We are trying to reconnect.</span>
