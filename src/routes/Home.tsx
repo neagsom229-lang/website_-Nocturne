@@ -59,7 +59,7 @@ function useSection<T>(load: () => Promise<T>, initial: T, enabled = true): Sect
 const emptyTrending: TrendingFeed = { movies: [], podcasts: [], music: [] };
 const emptyReleases: NewReleases = { movies: [], podcasts: [] };
 
-function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
+function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded: boolean }) {
   const player = useOptionalWorkspacePlayer();
   const navigate = useNavigate();
   const trending = useSection(getTrending, emptyTrending);
@@ -238,6 +238,11 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
           ...forYou.items.podcasts,
           ...forYou.items.music,
         ]} renderCard={renderMedia} seeAllHref="/library" />
+      ) : authLoaded ? (
+        <section className="discovery-shelf" aria-label="For You">
+          <div className="discovery-shelf__heading"><h2>For You</h2></div>
+          <p className="t-small t-mute" style={{ padding: '0 8px 16px' }}>Sign in to see personalized recommendations.</p>
+        </section>
       ) : null}
       {signedIn ? (
         <section className="following-feed" aria-label="From People You Follow">
@@ -330,9 +335,11 @@ function HomeShelf<T>({
 
 export function Home() {
   const { user } = useAuth();
+  const authLoaded = user !== undefined;
+  const signedIn = authLoaded && Boolean(user);
   return (
     <WorkspaceShell>
-      <DiscoveryHome signedIn={Boolean(user)} />
+      <DiscoveryHome signedIn={signedIn} authLoaded={authLoaded} />
     </WorkspaceShell>
   );
 }

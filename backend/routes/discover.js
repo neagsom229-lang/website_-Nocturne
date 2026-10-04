@@ -19,6 +19,20 @@ console.info('[discover] seed file:', { path: seedPath, exists: fs.existsSync(se
 let curatedSeeds = { music: [], podcasts: [] };
 try {
   curatedSeeds = JSON.parse(fs.readFileSync(curatedSeedsPath, 'utf8'));
+  const allSeeds = [...(curatedSeeds.music || []), ...(curatedSeeds.podcasts || [])];
+  for (const item of allSeeds) {
+    if (item.stream_url) {
+      fetch(item.stream_url, { method: 'HEAD' })
+        .then((res) => {
+          if (!res.ok) {
+            console.warn(`[discover] Warning: Seed item "${item.title}" stream_url returned status ${res.status}`);
+          }
+        })
+        .catch((err) => {
+          console.warn(`[discover] Warning: Seed item "${item.title}" stream_url HEAD check failed:`, err.message);
+        });
+    }
+  }
 } catch (error) {
   console.error('Failed to load curated seeds:', error);
 }
