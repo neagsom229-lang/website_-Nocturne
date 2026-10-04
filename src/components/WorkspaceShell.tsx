@@ -21,6 +21,7 @@ import { saveMedia } from '../lib/mediaApi';
 import { useCommandPalette } from '../lib/useCommandPalette';
 import { NotificationBell } from './NotificationBell';
 import { UserMenu } from './UserMenu';
+import { OfflineBanner } from './OfflineBanner';
 import { useQueue } from '../lib/useQueue';
 import { useSleepTimer } from '../lib/useSleepTimer';
 import { usePlaybackModes } from '../lib/usePlaybackModes';
@@ -695,6 +696,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   return (
     <PlayerContext.Provider value={player}>
+      <OfflineBanner />
       <div className={`workspace${collapsed ? ' workspace--collapsed' : ''}${mobileMenuOpen ? ' workspace--menu-open' : ''}${user ? '' : ' workspace--anonymous'}`}>
         {user ? <aside className="workspace-sidebar" aria-label="Main navigation">
           <div className="workspace-sidebar__brand">

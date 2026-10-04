@@ -1,5 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ServerErrorPage } from './components/ServerErrorPage';
+import { ComingSoon } from './components/ComingSoon';
 
 const Home = lazy(() => import('./routes/Home').then((module) => ({ default: module.Home })));
 const SignIn = lazy(() => import('./routes/SignIn').then((module) => ({ default: module.SignIn })));
@@ -42,6 +45,7 @@ const PlaylistDetailRoute = lazy(() => import('./routes/PlaylistDetail').then((m
 const ProfilePage = lazy(() => import('./routes/ProfilePage').then((module) => ({ default: module.ProfilePage })));
 const Settings = lazy(() => import('./routes/Settings').then((module) => ({ default: module.Settings })));
 const WorkspacePlaceholder = lazy(() => import('./routes/MediaHub').then((module) => ({ default: module.WorkspacePlaceholder })));
+const NotFound = lazy(() => import('./routes/NotFound'));
 
 function RouteLoading() {
   return (
@@ -54,57 +58,59 @@ function RouteLoading() {
 
 export function App() {
   return (
-    <Suspense fallback={<RouteLoading />}>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/landing" element={<LandingPage />} />
-        <Route path="/auth/login" element={<SignIn />} />
-        <Route path="/auth/register" element={<SignUp />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/auth/verify" element={<VerifyEmail />} />
-        <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-        <Route path="/auth/reset-password" element={<ResetPassword />} />
-        <Route path="/playlists/:id" element={<PlaylistDetailRoute />} />
-        <Route path="/u/:id" element={<ProfilePage />} />
-        <Route element={<ProtectedRoutes />}>
-          <Route path="/tapes" element={<MusicHome />} />
-          <Route path="/tapes/discover" element={<MusicDiscover />} />
-          <Route path="/tapes/now-playing" element={<MusicNowPlaying />} />
-          <Route path="/search" element={<SearchResultsPage />} />
-          <Route path="/library" element={<MusicLibraryPage />} />
-          <Route path="/movies" element={<MoviesPage />} />
-          <Route path="/movies/:id" element={<MovieDetailPage />} />
-          <Route path="/tv/:id" element={<TvDetail />} />
-          <Route path="/music/:id" element={<MusicDetail />} />
-          <Route path="/audiobooks/:id" element={<AudiobookDetail />} />
-          <Route path="/video-podcasts/:id" element={<VideoPodcastDetail />} />
-          <Route path="/podcasts/:id" element={<PodcastDetail />} />
-          <Route path="/playlists" element={<PlaylistsPage />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/settings/security" element={<SettingsSecurity />} />
-          <Route path="/notifications" element={<WorkspacePlaceholder title="Notifications" icon="bell" body="All your notifications and updates will live here." />} />
-          <Route path="/mood" element={<DiaryHome />} />
-          <Route path="/trending" element={<WorkspacePlaceholder title="Trending, softly." icon="trend-up" body="A calmer corner for the songs and stories people are finding tonight." />} />
-          <Route path="/chat" element={<WorkspacePlaceholder title="A little room to talk." icon="message" body="Your conversations will find a home here. For now, start with the people you’ve matched with." />} />
-          <Route path="/community" element={<WorkspacePlaceholder title="A room full of listeners." icon="users" body="The community feed is taking shape. Keep a song close while we get it ready." />} />
-          <Route path="/settings/appearance" element={<WorkspacePlaceholder title="Make the room yours." eyebrow="YOUR SPACE, YOUR LIGHT" icon="settings" body="Appearance choices will be gathered here. For now, the room stays in its warm plum and amber light." />} />
-          <Route path="/about" element={<WorkspacePlaceholder title="A place for what stays with you." eyebrow="ABOUT BEDROOM POP" icon="moon" body="Nocturne is a quiet little home for music, stories, reflection, and people who understand the late hours." />} />
-          <Route path="/static" element={<PodcastHome />} />
-          <Route path="/static/shows" element={<PodcastShows />} />
-          <Route path="/static/shows/:showId" element={<PodcastShowPage />} />
-          <Route path="/static/episode/:episodeId" element={<PodcastEpisodePage />} />
-          <Route path="/static/saved" element={<PodcastSaved />} />
-          <Route path="/static/player" element={<PodcastPlayer />} />
-          <Route path="/diary" element={<DiaryHome />} />
-          <Route path="/diary/stats" element={<DiaryStats />} />
-          <Route path="/lowlight" element={<DatingHome />} />
-          <Route path="/lowlight/matches" element={<DatingMatches />} />
-          <Route path="/lowlight/chat/:profileId" element={<DatingChat />} />
-          <Route path="/lowlight/profile" element={<DatingMyProfile />} />
-          <Route path="/lowlight/profiles/:profileId" element={<DatingPersonPage />} />
-        </Route>
-        <Route path="*" element={<Home />} />
-      </Routes>
-    </Suspense>
+    <ErrorBoundary fallback={<ServerErrorPage />}>
+      <Suspense fallback={<RouteLoading />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/landing" element={<LandingPage />} />
+          <Route path="/auth/login" element={<SignIn />} />
+          <Route path="/auth/register" element={<SignUp />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/verify" element={<VerifyEmail />} />
+          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
+          <Route path="/playlists/:id" element={<PlaylistDetailRoute />} />
+          <Route path="/u/:id" element={<ProfilePage />} />
+          <Route element={<ProtectedRoutes />}>
+            <Route path="/tapes" element={<MusicHome />} />
+            <Route path="/tapes/discover" element={<MusicDiscover />} />
+            <Route path="/tapes/now-playing" element={<MusicNowPlaying />} />
+            <Route path="/search" element={<SearchResultsPage />} />
+            <Route path="/library" element={<MusicLibraryPage />} />
+            <Route path="/movies" element={<MoviesPage />} />
+            <Route path="/movies/:id" element={<MovieDetailPage />} />
+            <Route path="/tv/:id" element={<TvDetail />} />
+            <Route path="/music/:id" element={<MusicDetail />} />
+            <Route path="/audiobooks/:id" element={<AudiobookDetail />} />
+            <Route path="/video-podcasts/:id" element={<VideoPodcastDetail />} />
+            <Route path="/podcasts/:id" element={<PodcastDetail />} />
+            <Route path="/playlists" element={<PlaylistsPage />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/security" element={<SettingsSecurity />} />
+            <Route path="/notifications" element={<WorkspacePlaceholder title="Notifications" icon="bell" body="All your notifications and updates will live here." />} />
+            <Route path="/mood" element={<DiaryHome />} />
+            <Route path="/trending" element={<ComingSoon title="Trending, softly." body="A calmer corner for the songs and stories people are finding tonight." icon="trend-up" relatedLabel="Movies" relatedHref="/movies" />} />
+            <Route path="/chat" element={<ComingSoon title="A little room to talk." body="Your conversations will find a home here. For now, start with your matches." icon="message" relatedLabel="Matches" relatedHref="/lowlight/matches" />} />
+            <Route path="/community" element={<ComingSoon title="A room full of listeners." body="The community feed is taking shape. Keep a song close while we get it ready." icon="users" relatedLabel="Search Hub" relatedHref="/search" />} />
+            <Route path="/settings/appearance" element={<ComingSoon title="Make the room yours." body="Appearance choices will be gathered here. For now, the room stays in its warm plum light." icon="settings" relatedLabel="Settings" relatedHref="/settings" />} />
+            <Route path="/about" element={<ComingSoon title="A place for what stays with you." body="Nocturne is a quiet little home for music, stories, reflection, and people who understand the late hours." icon="moon" relatedLabel="Home" relatedHref="/tapes" />} />
+            <Route path="/static" element={<PodcastHome />} />
+            <Route path="/static/shows" element={<PodcastShows />} />
+            <Route path="/static/shows/:showId" element={<PodcastShowPage />} />
+            <Route path="/static/episode/:episodeId" element={<PodcastEpisodePage />} />
+            <Route path="/static/saved" element={<PodcastSaved />} />
+            <Route path="/static/player" element={<PodcastPlayer />} />
+            <Route path="/diary" element={<DiaryHome />} />
+            <Route path="/diary/stats" element={<DiaryStats />} />
+            <Route path="/lowlight" element={<DatingHome />} />
+            <Route path="/lowlight/matches" element={<DatingMatches />} />
+            <Route path="/lowlight/chat/:profileId" element={<DatingChat />} />
+            <Route path="/lowlight/profile" element={<DatingMyProfile />} />
+            <Route path="/lowlight/profiles/:profileId" element={<DatingPersonPage />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
