@@ -109,6 +109,14 @@ const cookieOptions = {
 };
 
 async function authenticate(request, response, next) {
+  console.info('[auth] path check', {
+    originalUrl: request.originalUrl,
+    path: request.path,
+    baseUrl: request.baseUrl,
+    method: request.method,
+    hasCookie: !!request.cookies[sessionCookie],
+  });
+
   const publicPaths = [
     '/auth/signup',
     '/auth/signin',
@@ -141,10 +149,7 @@ async function authenticate(request, response, next) {
   const publicMovieRead = request.method === 'GET' && (
     request.path === '/movies' ||
     request.path.startsWith('/movies/') ||
-    request.path.startsWith('/tv/') ||
-    request.path === '/movies/trending' ||
-    request.path === '/movies/upcoming' ||
-    request.path === '/movies/now-playing'
+    request.path.startsWith('/tv/')
   );
 
   const publicDiscoverRead = request.method === 'GET' && (
