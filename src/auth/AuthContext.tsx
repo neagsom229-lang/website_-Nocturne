@@ -12,7 +12,7 @@ export type AuthUser = {
 };
 
 type AuthContextValue = {
-  user: AuthUser | null;
+  user: AuthUser | undefined | null;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<AuthUser>;
   signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<{ user: null; email: string; message: string }>;
@@ -27,9 +27,6 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function authRequest<T>(path: string, body?: object): Promise<T> {
-  // credentials: 'same-origin' is correct when frontend and backend share the same origin
-  // (e.g. bedroom-pop.onrender.com). If frontend and backend are split across distinct
-  // domains, change to 'include' and configure CORS with credentials: true.
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET',
     credentials: 'same-origin',
@@ -56,7 +53,7 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | undefined | null>(undefined);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -102,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signUpWithEmail(email: string, password: string, displayName = email.split('@')[0]) {
-    // Supabase requires email verification before signin. Do NOT set user here on signup.
     const result = await authRequest<{ user: null; email: string; message: string }>('/api/auth/signup', { displayName, email, password });
     return result;
   }

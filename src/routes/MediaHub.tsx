@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
@@ -326,6 +327,7 @@ export function SearchResultsPage() {
 }
 
 export function MusicLibraryPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -346,7 +348,31 @@ export function MusicLibraryPage() {
     }
   }
 
-  useEffect(() => { void loadLibrary(); }, []);
+  useEffect(() => {
+    if (user === undefined || user === null) {
+      setLoading(false);
+      return;
+    }
+    void loadLibrary();
+  }, [user]);
+
+  if (user === null) {
+    return (
+      <section className="media-page">
+        <header className="media-page__heading media-page__heading--compact">
+          <p className="t-eyebrow">THE THINGS YOU BROUGHT HOME</p>
+          <h1 className="t-h1">My Library</h1>
+          <p className="t-body">A collection of songs, stories, and videos to return to.</p>
+        </header>
+        <EmptyState
+          icon="library"
+          title="Sign in to see your library."
+          body="Save songs, podcasts, and movies to keep them close."
+          action={<Link className="btn btn--primary btn--sm" to="/signin">Sign in</Link>}
+        />
+      </section>
+    );
+  }
 
   const filteredItems = items.filter((item) => {
     if (activeFilter === 'all') return true;

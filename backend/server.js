@@ -137,10 +137,35 @@ async function authenticate(request, response, next) {
     request.path !== '/users/me';
   const publicMediaRead = request.method === 'GET' &&
     /^\/media\/[^/]+\/(?:likes|comments)$/.test(request.path);
+
+  const publicMovieRead = request.method === 'GET' && (
+    request.path === '/movies' ||
+    request.path.startsWith('/movies/') ||
+    request.path.startsWith('/tv/') ||
+    request.path === '/movies/trending' ||
+    request.path === '/movies/upcoming' ||
+    request.path === '/movies/now-playing'
+  );
+
+  const publicDiscoverRead = request.method === 'GET' && (
+    request.path === '/discover/trending' ||
+    request.path === '/discover/new-releases' ||
+    request.path === '/discover/public-playlists'
+  );
+
+  const publicMediaSearch = request.method === 'GET' && (
+    request.path === '/search/unified' ||
+    request.path === '/search/suggest' ||
+    request.path === '/podcasts/search' ||
+    request.path === '/podcasts/video-search' ||
+    request.path === '/music/random-audius'
+  );
+
+  const isPublicGet = publicPlaylistRead || publicUserRead || publicMediaRead || publicMovieRead || publicDiscoverRead || publicMediaSearch;
   
   const sessionId = request.cookies[sessionCookie];
   if (!sessionId) {
-    if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+    if (isPublicGet) return next();
     return response.status(401).json({ error: 'Please log in to continue' });
   }
 
@@ -151,7 +176,7 @@ async function authenticate(request, response, next) {
 
   if (!session) {
     response.clearCookie(sessionCookie, cookieOptions);
-    if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+    if (isPublicGet) return next();
     return response.status(401).json({ error: 'Please log in to continue' });
   }
 
@@ -165,7 +190,7 @@ async function authenticate(request, response, next) {
       if (error || !data?.session) {
         await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
         response.clearCookie(sessionCookie, cookieOptions);
-        if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+        if (isPublicGet) return next();
         return response.status(401).json({ error: 'Please log in to continue' });
       }
       const newExpiresAt = new Date(Date.now() + (data.session.expires_in || 3600) * 1000).toISOString();
@@ -177,7 +202,7 @@ async function authenticate(request, response, next) {
     } catch {
       await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
       response.clearCookie(sessionCookie, cookieOptions);
-      if (publicPlaylistRead || publicUserRead || publicMediaRead) return next();
+      if (isPublicGet) return next();
       return response.status(401).json({ error: 'Please log in to continue' });
     }
   } else {

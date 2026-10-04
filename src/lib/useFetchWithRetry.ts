@@ -43,6 +43,12 @@ export function useFetchWithRetry<T>(
         setDegraded(isDegraded);
       } catch (err: any) {
         if (!active) return;
+        if (err?.status === 401 || err?.message?.includes('401') || err?.message?.includes('Please log in')) {
+          setData(initialData);
+          setDegraded(false);
+          setError(null);
+          return;
+        }
         if (!isRetry) {
           setTimeout(() => {
             if (active) execute(true);
