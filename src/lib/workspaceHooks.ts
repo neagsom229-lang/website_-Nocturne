@@ -28,6 +28,18 @@ export type WorkspacePlayer = {
   duration: number;
   error: string;
   volume: number;
+  shuffle: boolean;
+  repeat: 'off' | 'all' | 'one';
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
+  queue: ExternalMedia[];
+  addToQueue: (item: ExternalMedia) => void;
+  removeFromQueue: (index: number) => void;
+  clearQueue: () => void;
+  reorderQueue: (from: number, to: number) => void;
+  timerMode: '15' | '30' | '60' | 'track' | 'off';
+  timeLeftMinutes: number | null;
+  setTimer: (mode: '15' | '30' | '60' | 'track' | 'off') => void;
   updateProgress: (seconds: number) => void;
   setDuration: (seconds: number) => void;
   setError: (message: string) => void;

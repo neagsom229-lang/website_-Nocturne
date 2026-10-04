@@ -21,7 +21,15 @@ import { saveMedia } from '../lib/mediaApi';
 import { useCommandPalette } from '../lib/useCommandPalette';
 import { NotificationBell } from './NotificationBell';
 import { UserMenu } from './UserMenu';
+import { useQueue } from '../lib/useQueue';
+import { useSleepTimer } from '../lib/useSleepTimer';
+import { usePlaybackModes } from '../lib/usePlaybackModes';
+import { IdleRecommendations } from './player/IdleRecommendations';
+import { QueueButton } from './player/QueueButton';
+import { SleepTimer } from './player/SleepTimer';
+import { WaveformPlaceholder } from './player/WaveformPlaceholder';
 import '../styles/top-bar.css';
+import '../styles/player-dock.css';
 import {
   fetchMixes,
   fetchNowPlaying,
@@ -106,12 +114,27 @@ function PlayerDock() {
     duration,
     error,
     volume,
+    shuffle,
+    repeat,
+    toggleShuffle,
+    cycleRepeat,
+    queue,
+    removeFromQueue,
+    clearQueue,
+    timerMode,
+    timeLeftMinutes,
+    setTimer,
     toggle,
     skip,
     seek,
     persistSeek,
     setVolume,
+    playExternalMedia,
   } = useWorkspacePlayer();
+
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState(0);
+
   const track = externalMedia ? {
     id: externalMedia.externalId,
     title: externalMedia.title,
@@ -136,9 +159,27 @@ function PlayerDock() {
           </span>
         )}
         <span className="workspace-player__copy">
-          <strong>{track?.title ?? 'Nothing playing yet'}</strong>
+          <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {track?.title ?? 'Nothing playing yet'}
+            {!track && <WaveformPlaceholder />}
+          </strong>
           <span>{track?.artist ?? 'Choose something from your listening room'}</span>
         </span>
+        {!track && (
+          <IdleRecommendations
+            isIdle={!track}
+            onPlay={(item) => playExternalMedia({
+              type: 'audio',
+              provider: item.source || 'audius',
+              externalId: item.id,
+              title: item.title,
+              artist: item.artist || null,
+              thumbnailUrl: item.thumbnail_url || null,
+              streamUrl: item.stream_url || '',
+              externalUrl: item.external_url || null,
+            })}
+          />
+        )}
         {user && externalMedia ? (
           <AddToPlaylistButton
             mediaLibraryId={externalMedia.id}
@@ -175,27 +216,75 @@ function PlayerDock() {
         >
           <Icon name="skip-forward" size={19} />
         </button>
-        <label className="sr-only" htmlFor="workspace-player-progress">Track progress</label>
-        <input
-          id="workspace-player-progress"
-          className="workspace-player__seek"
-          type="range"
-          min="0"
-          max={track?.seconds ?? 1}
-          value={track?.seconds ? Math.min(progress, track.seconds) : 0}
-          disabled={!track || !track.seconds}
-          onChange={(event) => {
-            const seconds = Number(event.target.value);
-            seek(seconds);
-          }}
-          onPointerUp={() => void persistSeek()}
-          onKeyUp={() => void persistSeek()}
-        />
+
+        <button
+          type="button"
+          className={`playback-mode-btn ${shuffle ? 'is-active' : ''}`}
+          aria-label="Shuffle"
+          aria-pressed={shuffle}
+          onClick={toggleShuffle}
+        >
+          <Icon name="trend-up" size={16} />
+        </button>
+
+        <button
+          type="button"
+          className={`playback-mode-btn ${repeat !== 'off' ? 'is-active' : ''}`}
+          aria-label={`Repeat: ${repeat}`}
+          onClick={cycleRepeat}
+        >
+          <Icon name="refresh" size={16} />
+          {repeat === 'one' && <span className="repeat-one-badge">1</span>}
+        </button>
+
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: 80 }}>
+          <label className="sr-only" htmlFor="workspace-player-progress">Track progress</label>
+          <input
+            id="workspace-player-progress"
+            className="workspace-player__seek"
+            type="range"
+            min="0"
+            max={track?.seconds ?? 1}
+            value={track?.seconds ? Math.min(progress, track.seconds) : 0}
+            disabled={!track || !track.seconds}
+            onChange={(event) => {
+              const seconds = Number(event.target.value);
+              seek(seconds);
+            }}
+            onPointerUp={() => void persistSeek()}
+            onKeyUp={() => void persistSeek()}
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = e.clientX - rect.left;
+              const pct = Math.max(0, Math.min(1, x / rect.width));
+              setHoverTime(pct * (track?.seconds ?? 0));
+              setTooltipPos(x);
+            }}
+            onMouseLeave={() => setHoverTime(null)}
+          />
+          {hoverTime !== null && (
+            <div style={{ position: 'absolute', top: -28, left: tooltipPos, transform: 'translateX(-50%)', background: 'var(--tp-surf)', border: '1px solid var(--tp-line)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontFamily: 'var(--tp-font-mono)', pointerEvents: 'none', zIndex: 10 }}>
+              {formatClock(hoverTime)}
+            </div>
+          )}
+        </div>
         <span className="workspace-player__time t-mono">
           {formatClock(progress)} / {formatClock(track?.seconds ?? 0)}
         </span>
       </div>
-      <div className="workspace-player__volume">
+      <div className="workspace-player__volume" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <QueueButton
+          queue={queue}
+          currentIndex={externalQueueIndex >= 0 ? externalQueueIndex : 0}
+          onClear={clearQueue}
+          onRemove={removeFromQueue}
+          onSelectIndex={() => {}}
+        />
+        <SleepTimer
+          timerMode={timerMode}
+          timeLeftMinutes={timeLeftMinutes}
+          setTimer={setTimer}
+        />
         <Icon name={volume === 0 ? 'volume-off' : 'volume'} size={17} />
         <label className="sr-only" htmlFor="workspace-player-volume">Volume</label>
         <input
@@ -243,6 +332,17 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     } catch {
       return [];
     }
+  });
+
+  const { queue, addToQueue, removeFromQueue, clearQueue, reorderQueue } = useQueue(externalQueue);
+  const { shuffle, repeat, toggleShuffle, cycleRepeat } = usePlaybackModes();
+  const [sleepToast, setSleepToast] = useState('');
+  const { timerMode, timeLeftMinutes, setTimer } = useSleepTimer(() => {
+    if (externalPlaying || nowPlaying?.isPlaying) {
+      void toggle();
+    }
+    setSleepToast('Sleep timer complete. Good night.');
+    window.setTimeout(() => setSleepToast(''), 5000);
   });
 
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette();
@@ -351,12 +451,12 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setBuffering(true);
   }
 
-  function playExternalQueue(queue: ExternalMedia[]) {
-    if (!queue.length) return;
-    setExternalQueue(queue);
+  function playExternalQueue(queueList: ExternalMedia[]) {
+    if (!queueList.length) return;
+    setExternalQueue(queueList);
     setExternalQueueIndex(0);
-    playExternalMedia(queue[0]);
-    setExternalQueue(queue);
+    playExternalMedia(queueList[0]);
+    setExternalQueue(queueList);
     setExternalQueueIndex(0);
   }
 
@@ -427,9 +527,24 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   async function skip(direction: -1 | 1) {
     if (externalMedia) {
-      const nextIndex = externalQueueIndex + direction;
+      let nextIndex = externalQueueIndex + direction;
+      if (shuffle && direction === 1 && externalQueue.length > 1) {
+        nextIndex = Math.floor(Math.random() * externalQueue.length);
+      }
       const nextMedia = externalQueue[nextIndex];
       if (!nextMedia) {
+        if (repeat === 'all' && externalQueue.length > 0) {
+          nextIndex = 0;
+          const firstMedia = externalQueue[0];
+          setExternalQueueIndex(0);
+          setExternalMedia(firstMedia);
+          setExternalPlaying(true);
+          setProgress(0);
+          progressRef.current = 0;
+          setDuration(0);
+          setBuffering(true);
+          return;
+        }
         setExternalPlaying(false);
         return;
       }
@@ -444,10 +559,14 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       return;
     }
     if (!nowPlaying || mixes.length === 0) return;
-    const queue = mixes.flatMap((mix) => mix.tracks.map((track) => ({ mix, track })));
-    const currentIndex = queue.findIndex(({ track }) => track.id === nowPlaying.track.id);
-    if (currentIndex < 0 || queue.length === 0) return;
-    const next = queue[(currentIndex + direction + queue.length) % queue.length];
+    const queueList = mixes.flatMap((mix) => mix.tracks.map((track) => ({ mix, track })));
+    const currentIndex = queueList.findIndex(({ track }) => track.id === nowPlaying.track.id);
+    if (currentIndex < 0 || queueList.length === 0) return;
+    let nextIndex = (currentIndex + direction + queueList.length) % queueList.length;
+    if (shuffle && direction === 1 && queueList.length > 1) {
+      nextIndex = Math.floor(Math.random() * queueList.length);
+    }
+    const next = queueList[nextIndex];
     if (!next) return;
     const wasPlaying = nowPlaying.isPlaying;
     try {
@@ -480,14 +599,14 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   async function togglePictureInPicture() {
     if (!document.pictureInPictureEnabled) return;
-    const player = audioRef.current?.getInternalPlayer();
-    if (!(player instanceof HTMLVideoElement) || !player.requestPictureInPicture) {
+    const playerInst = audioRef.current?.getInternalPlayer();
+    if (!(playerInst instanceof HTMLVideoElement) || !playerInst.requestPictureInPicture) {
       setError('Picture-in-Picture is not available for this video.');
       return;
     }
     try {
-      if (document.pictureInPictureElement === player) await document.exitPictureInPicture();
-      else await player.requestPictureInPicture();
+      if (document.pictureInPictureElement === playerInst) await document.exitPictureInPicture();
+      else await playerInst.requestPictureInPicture();
     } catch (pipError) {
       setError(pipError instanceof Error ? pipError.message : 'Could not open Picture-in-Picture.');
     }
@@ -532,6 +651,18 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     duration,
     error,
     volume,
+    shuffle,
+    repeat,
+    toggleShuffle,
+    cycleRepeat,
+    queue,
+    addToQueue,
+    removeFromQueue,
+    clearQueue,
+    reorderQueue,
+    timerMode,
+    timeLeftMinutes,
+    setTimer,
     setDuration,
     setExternalPlaying,
     setError,
@@ -707,7 +838,20 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
+                  onEnded={() => {
+                    if (repeat === 'one') {
+                      seek(0);
+                      setExternalPlaying(true);
+                    } else if (externalQueueIndex < externalQueue.length - 1) {
+                      void skip(1);
+                    } else if (repeat === 'all' && externalQueue.length > 0) {
+                      setExternalQueueIndex(0);
+                      setExternalMedia(externalQueue[0]);
+                      setExternalPlaying(true);
+                    } else {
+                      setExternalPlaying(false);
+                    }
+                  }}
                   onError={() => {
                     setBuffering(false);
                     setError('This video podcast episode could not be played.');
@@ -729,7 +873,20 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
+                  onEnded={() => {
+                    if (repeat === 'one') {
+                      seek(0);
+                      setExternalPlaying(true);
+                    } else if (externalQueueIndex < externalQueue.length - 1) {
+                      void skip(1);
+                    } else if (repeat === 'all' && externalQueue.length > 0) {
+                      setExternalQueueIndex(0);
+                      setExternalMedia(externalQueue[0]);
+                      setExternalPlaying(true);
+                    } else {
+                      setExternalPlaying(false);
+                    }
+                  }}
                   onError={() => {
                     setBuffering(false);
                     setError('This SoundCloud item could not be played.');
@@ -750,7 +907,20 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
                   onBuffer={() => setBuffering(true)}
                   onBufferEnd={() => setBuffering(false)}
                   onReady={() => setBuffering(false)}
-                  onEnded={() => externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)}
+                  onEnded={() => {
+                    if (repeat === 'one') {
+                      seek(0);
+                      setExternalPlaying(true);
+                    } else if (externalQueueIndex < externalQueue.length - 1) {
+                      void skip(1);
+                    } else if (repeat === 'all' && externalQueue.length > 0) {
+                      setExternalQueueIndex(0);
+                      setExternalMedia(externalQueue[0]);
+                      setExternalPlaying(true);
+                    } else {
+                      setExternalPlaying(false);
+                    }
+                  }}
                   onError={() => {
                     setBuffering(false);
                     setError('This video could not be played. The provider may have disabled embedding.');
@@ -798,9 +968,24 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           onBufferEnd={() => setBuffering(false)}
           onProgress={(state: OnProgressProps) => updateProgress(state.playedSeconds)}
           onDuration={setDuration}
-          onEnded={() => externalMedia
-            ? externalQueueIndex < externalQueue.length - 1 ? void skip(1) : setExternalPlaying(false)
-            : void skip(1)}
+          onEnded={() => {
+            if (repeat === 'one') {
+              seek(0);
+              if (externalMedia) setExternalPlaying(true);
+            } else if (externalMedia) {
+              if (externalQueueIndex < externalQueue.length - 1) {
+                void skip(1);
+              } else if (repeat === 'all' && externalQueue.length > 0) {
+                setExternalQueueIndex(0);
+                setExternalMedia(externalQueue[0]);
+                setExternalPlaying(true);
+              } else {
+                setExternalPlaying(false);
+              }
+            } else {
+              void skip(1);
+            }
+          }}
           onError={() => {
             setBuffering(false);
             setError('This audio could not be loaded. Check your connection or try another preview.');
@@ -809,6 +994,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
           />
         </Suspense>
         ) : null}
+        {sleepToast && <div role="status" aria-live="polite" className="sr-only">{sleepToast}</div>}
         <PlayerDock />
       </div>
     </PlayerContext.Provider>
