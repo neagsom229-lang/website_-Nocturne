@@ -248,6 +248,28 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     }
   });
 
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [recentlyPlayed, setRecentlyPlayed] = useState<Array<{ id: string; title: string; artist?: string }>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('nocturne_play_history') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  function toggleGroup(groupLabel: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [groupLabel]: !prev[groupLabel] }));
+  }
+
+  function recordPlayHistory(item: { id: string; title: string; artist?: string }) {
+    try {
+      const history = JSON.parse(localStorage.getItem('nocturne_play_history') || '[]');
+      const next = [item, ...history.filter((i: any) => i.id !== item.id)].slice(0, 5);
+      localStorage.setItem('nocturne_play_history', JSON.stringify(next));
+      setRecentlyPlayed(next);
+    } catch {}
+  }
+
   const suggestCacheRef = useRef<Map<string, { time: number; data: SuggestionItem[] }>>(new Map());
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -388,6 +410,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       progressRef.current = nowPlaying.progressSeconds;
       setProgress(nowPlaying.progressSeconds);
       audioRef.current?.seekTo(nowPlaying.progressSeconds, 'seconds');
+      recordPlayHistory({ id: nowPlaying.track.id, title: nowPlaying.track.title, artist: nowPlaying.track.artist });
     }
   }, [nowPlaying?.track.id, playerReady]);
 
@@ -402,6 +425,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setExternalPlaying(false);
     setDuration(track.seconds);
     audioRef.current?.seekTo(0, 'seconds');
+    recordPlayHistory({ id: track.id, title: track.title, artist: track.artist });
     try {
       const updated = await updateNowPlaying(mix, track, false, 0);
       setNowPlaying(updated);
@@ -423,6 +447,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     setProgress(0);
     progressRef.current = 0;
     setDuration(0);
+    recordPlayHistory({ id: media.externalId, title: media.title, artist: media.artist || undefined });
     if (media.type === 'video') {
       setExternalPlaying(true);
     } else {
@@ -520,6 +545,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       progressRef.current = 0;
       setDuration(0);
       setBuffering(true);
+      recordPlayHistory({ id: nextMedia.externalId, title: nextMedia.title, artist: nextMedia.artist || undefined });
       return;
     }
     if (!nowPlaying || mixes.length === 0) return;
@@ -665,31 +691,61 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
             </button>
           </div>
           <div className="workspace-sidebar__body">
-            {NAV_GROUPS.map((group) => (
-              <section className="workspace-nav-group" key={group.label} aria-label={group.label}>
-                <p className="workspace-sidebar__eyebrow">{group.label}</p>
-                <nav>
-                  {group.items.map((item) => (
-                    <NavLink
-                      key={item.label}
-                      to={item.to}
-                      end={item.end}
-                      title={collapsed ? item.label : undefined}
-                      aria-label={collapsed ? item.label : undefined}
-                      className={({ isActive }) => {
-                        const active = item.queryTab
-                          ? isActive && (new URLSearchParams(location.search).get('tab') ?? 'mine') === item.queryTab
-                          : isActive;
-                        return `workspace-nav-link${active ? ' is-active' : ''}`;
-                      }}
+            {NAV_GROUPS.map((group, groupIdx) => {
+              const isGroupCollapsed = collapsedGroups[group.label];
+              return (
+                <div key={group.label}>
+                  <section className="workspace-nav-group" aria-label={group.label}>
+                    <button
+                      type="button"
+                      className="workspace-sidebar__eyebrow-btn"
+                      onClick={() => toggleGroup(group.label)}
+                      style={{ background: 'none', border: 'none', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '0 8px 14px' }}
                     >
-                      <Icon name={item.icon} size={18} />
-                      <span>{item.label}</span>
-                    </NavLink>
-                  ))}
-                </nav>
-              </section>
-            ))}
+                      <span className="workspace-sidebar__eyebrow" style={{ margin: 0 }}>{group.label}</span>
+                      <span style={{ color: 'var(--tp-mute)', display: 'inline-flex' }}>
+                        <Icon name={isGroupCollapsed ? 'chevron-down' : 'chevron-right'} size={14} />
+                      </span>
+                    </button>
+                    {!isGroupCollapsed && (
+                      <nav>
+                        {group.items.map((item) => (
+                          <NavLink
+                            key={item.label}
+                            to={item.to}
+                            end={item.end}
+                            title={collapsed ? item.label : undefined}
+                            aria-label={collapsed ? item.label : undefined}
+                            className={({ isActive }) => {
+                              const active = item.queryTab
+                                ? isActive && (new URLSearchParams(location.search).get('tab') ?? 'mine') === item.queryTab
+                                : isActive;
+                              return `workspace-nav-link${active ? ' is-active' : ''}`;
+                            }}
+                          >
+                            <Icon name={item.icon} size={18} />
+                            <span>{item.label}</span>
+                          </NavLink>
+                        ))}
+                      </nav>
+                    )}
+                  </section>
+                  {groupIdx === 0 && recentlyPlayed.length > 0 && !isGroupCollapsed && (
+                    <section className="workspace-nav-group workspace-recent-group" aria-label="Recently Played" style={{ marginTop: '19px' }}>
+                      <p className="workspace-sidebar__eyebrow" style={{ margin: '0 8px 14px' }}>Recently Played</p>
+                      <nav>
+                        {recentlyPlayed.map((track) => (
+                          <div key={track.id} className="workspace-nav-link" style={{ fontSize: '11px', opacity: 0.85, paddingLeft: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Icon name="headphones" size={14} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</span>
+                          </div>
+                        ))}
+                      </nav>
+                    </section>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="workspace-sidebar__footer">
             <span className="dot dot--live" aria-hidden="true" />

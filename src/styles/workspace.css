@@ -152,37 +152,38 @@
   font-size: 12px;
   font-weight: 500;
   transition:
-    color var(--tp-dur) var(--tp-ease),
-    background var(--tp-dur) var(--tp-ease),
-    border-color var(--tp-dur) var(--tp-ease),
-    transform var(--tp-dur) var(--tp-ease);
+    color 100ms ease-in,
+    background 100ms ease-in,
+    border-color 100ms ease-in,
+    transform 100ms ease-in;
 }
 
 .workspace-nav-link > svg {
   flex: none;
   color: var(--tp-mute);
-  transition: color var(--tp-dur) var(--tp-ease);
+  transition: color 100ms ease-in;
 }
 
 .workspace-nav-link:hover {
   transform: translateX(2px);
   color: var(--tp-ink);
-  background: color-mix(in oklab, var(--tp-surf) 82%, transparent);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .workspace-nav-link:hover > svg {
-  color: var(--tp-acc);
+  color: #f4b63f;
 }
 
 .workspace-nav-link.is-active {
-  border-color: color-mix(in oklab, var(--tp-acc) 24%, transparent);
-  color: var(--tp-acc);
-  background: color-mix(in oklab, var(--tp-acc) 10%, var(--tp-surf));
-  box-shadow: inset 2px 0 0 var(--tp-acc), 0 4px 18px color-mix(in oklab, var(--tp-acc) 6%, transparent);
+  border-left: 3px solid #f4b63f;
+  border-color: transparent;
+  color: #f4b63f;
+  background: rgba(244, 182, 63, 0.08);
+  border-radius: 4px 12px 12px 4px;
 }
 
 .workspace-nav-link.is-active > svg {
-  color: var(--tp-acc);
+  color: #f4b63f;
 }
 
 .workspace-sidebar__footer {
