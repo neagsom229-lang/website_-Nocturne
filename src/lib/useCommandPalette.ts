@@ -22,10 +22,16 @@ export function useCommandPalette() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isMac = /Mac|iPhone|iPad/.test(
+        (navigator as any).userAgentData?.platform || navigator.platform || ''
+      );
       const cmdKey = isMac ? e.metaKey : e.ctrlKey;
+      const target = document.activeElement as HTMLElement;
+      const isEditing = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target?.isContentEditable;
 
-      if ((cmdKey && e.key.toLowerCase() === 'k') || (e.key === '/' && !(document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement))) {
+      if ((cmdKey && e.key.toLowerCase() === 'k') || (e.key === '/' && !isEditing)) {
         e.preventDefault();
         if (isOpen) close();
         else open();

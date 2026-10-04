@@ -4,6 +4,7 @@ import { Icon } from '../Icon';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { useRecentSearches } from '../../lib/useRecentSearches';
 import { searchSuggest, type SuggestionItem } from '../../lib/mediaApi';
+import { useWorkspacePlayer } from '../../lib/workspaceHooks';
 import { QuickActions } from './QuickActions';
 import { RecentSearches } from './RecentSearches';
 import { CommandPaletteRow } from './CommandPaletteRow';
@@ -11,6 +12,7 @@ import '../../styles/command-palette.css';
 
 export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const navigate = useNavigate();
+  const { playExternalMedia } = useWorkspacePlayer();
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 200);
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
@@ -40,13 +42,13 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
     setLoading(true);
     const controller = new AbortController();
 
-    searchSuggest(q)
+    searchSuggest(q, { signal: controller.signal })
       .then((items) => {
         if (!active) return;
         setSuggestions(items);
       })
-      .catch(() => {
-        if (active) setSuggestions([]);
+      .catch((err) => {
+        if (active && err?.name !== 'AbortError') setSuggestions([]);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -61,22 +63,61 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
   const hasQuery = query.trim().length >= 2;
   const totalItems = hasQuery ? suggestions.length : recents.length + 4;
 
-  const handleSelect = useCallback((type: 'action' | 'recent' | 'suggestion', value: any) => {
+  const handleSelect = useCallback(async (type: 'action' | 'recent' | 'suggestion', value: any) => {
     if (type === 'action') {
       if (value === 'movies') navigate('/movies');
       else if (value === 'library') navigate('/library');
       else if (value === 'playlists') navigate('/playlists');
-      else if (value === 'random') navigate('/search?q=lofi');
+      else if (value === 'random') {
+        try {
+          const res = await fetch('/api/music/random-audius');
+          const data = await res.json();
+          const track = data?.track || data;
+          if (track?.stream_url || track?.streamUrl) {
+            playExternalMedia({
+              type: 'audio',
+              provider: 'audius',
+              externalId: track.id,
+              title: track.title,
+              artist: track.artist,
+              thumbnailUrl: track.thumbnail_url || track.artwork || null,
+              streamUrl: track.stream_url || track.streamUrl,
+              externalUrl: track.external_url || track.externalUrl || null,
+            });
+            onClose();
+          }
+        } catch {}
+        return;
+      }
     } else if (type === 'recent') {
       addRecent(value);
       navigate(`/search?q=${encodeURIComponent(value)}`);
     } else if (type === 'suggestion') {
       addRecent(value.title);
-      if (value.media_type === 'movie') navigate(`/movies/${encodeURIComponent(value.id)}`);
-      else navigate(`/search?q=${encodeURIComponent(value.title)}`);
+      switch (value.media_type) {
+        case 'music':
+          playExternalMedia({
+            type: 'audio',
+            provider: value.source || 'audius',
+            externalId: value.id,
+            title: value.title,
+            artist: value.subtitle || value.artist || null,
+            thumbnailUrl: value.thumbnail_url,
+            streamUrl: value.stream_url || '',
+            externalUrl: value.external_url || null,
+          });
+          break;
+        case 'movie':         navigate(`/movies/${encodeURIComponent(value.id)}`); break;
+        case 'tv':            navigate(`/tv/${encodeURIComponent(value.id)}`); break;
+        case 'podcast':       navigate(`/podcasts/${encodeURIComponent(value.id)}`); break;
+        case 'audiobook':     navigate(`/audiobooks/${encodeURIComponent(value.id)}`); break;
+        case 'video_podcast': navigate(`/video-podcasts/${encodeURIComponent(value.id)}`); break;
+        default:
+          navigate(`/search?q=${encodeURIComponent(value.title)}`);
+      }
     }
     onClose();
-  }, [navigate, addRecent, onClose]);
+  }, [navigate, addRecent, onClose, playExternalMedia]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') {
@@ -105,25 +146,25 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
     }
   }
 
+  // Focus trap
   useEffect(() => {
-    function handleTab(e: KeyboardEvent) {
-      if (e.key === 'Tab' && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll('input, button');
-        const first = focusable[0] as HTMLElement;
-        const last = focusable[focusable.length - 1] as HTMLElement;
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
+    if (!isOpen) return;
+    function trapFocus(e: KeyboardEvent) {
+      if (e.key !== 'Tab' || !modalRef.current) return;
+      const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus();
       }
     }
-    if (isOpen) {
-      window.addEventListener('keydown', handleTab);
-    }
-    return () => window.removeEventListener('keydown', handleTab);
+    document.addEventListener('keydown', trapFocus);
+    return () => document.removeEventListener('keydown', trapFocus);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -152,7 +193,7 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
           />
           <kbd style={{ fontSize: '10px', padding: '2px 6px', border: '1px solid var(--tp-line)', borderRadius: '6px', color: 'var(--tp-mute)' }}>Esc</kbd>
         </div>
-        <div className="command-palette-content">
+        <div className="command-palette-content" role="listbox">
           <div role="status" aria-live="polite" className="sr-only">
             {hasQuery ? `${suggestions.length} results for '${query}'` : 'Recent searches and quick actions'}
           </div>
@@ -185,11 +226,14 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
             <>
               <RecentSearches
                 recents={recents}
+                selectedIndex={selectedIndex}
                 onSelect={(q) => handleSelect('recent', q)}
                 onRemove={removeRecent}
                 onClear={clearRecents}
               />
               <QuickActions
+                selectedIndex={selectedIndex}
+                startIndex={recents.length}
                 onSelect={(actionId) => handleSelect('action', actionId)}
               />
             </>

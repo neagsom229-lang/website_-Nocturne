@@ -316,6 +316,9 @@ export function createSearchUnifiedRouter({ database }) {
         media_type: item.media_type,
         thumbnail_url: item.thumbnail_url,
         source: item.source,
+        stream_url: item.stream_url ?? null,
+        external_url: item.external_url ?? null,
+        subtitle: item.subtitle ?? null,
       }));
 
       const payload = { suggestions: topSuggestions };

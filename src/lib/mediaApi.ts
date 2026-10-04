@@ -153,9 +153,12 @@ export type UnifiedSearchResponse = {
 export type SuggestionItem = {
   id: string;
   title: string;
-  media_type: 'music' | 'podcast' | 'movie' | 'video_podcast';
+  media_type: 'music' | 'podcast' | 'movie' | 'video_podcast' | 'tv' | 'audiobook';
   thumbnail_url: string | null;
   source: string;
+  stream_url?: string | null;
+  external_url?: string | null;
+  subtitle?: string | null;
 };
 
 export async function searchUnified(options: UnifiedSearchOptions): Promise<UnifiedSearchResponse> {
@@ -168,9 +171,11 @@ export async function searchUnified(options: UnifiedSearchOptions): Promise<Unif
   return request<UnifiedSearchResponse>(`/api/search/unified?${params}`);
 }
 
-export async function searchSuggest(query: string): Promise<SuggestionItem[]> {
+export async function searchSuggest(query: string, options?: { signal?: AbortSignal }): Promise<SuggestionItem[]> {
   const params = new URLSearchParams({ q: query });
-  const response = await request<{ suggestions: SuggestionItem[] }>(`/api/search/suggest?${params}`);
+  const response = await request<{ suggestions: SuggestionItem[] }>(`/api/search/suggest?${params}`, {
+    signal: options?.signal,
+  });
   return response.suggestions;
 }
 

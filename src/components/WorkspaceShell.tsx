@@ -248,7 +248,9 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette();
   const [isMac, setIsMac] = useState(true);
   useEffect(() => {
-    setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+    setIsMac(/Mac|iPhone|iPad/.test(
+      (navigator as any).userAgentData?.platform || navigator.platform || ''
+    ));
   }, []);
 
   function toggleGroup(groupLabel: string) {

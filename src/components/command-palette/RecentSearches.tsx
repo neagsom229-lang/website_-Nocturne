@@ -2,11 +2,13 @@ import { CommandPaletteRow } from './CommandPaletteRow';
 
 export function RecentSearches({
   recents,
+  selectedIndex,
   onSelect,
   onRemove,
   onClear,
 }: {
   recents: string[];
+  selectedIndex: number;
   onSelect: (query: string) => void;
   onRemove: (query: string) => void;
   onClear: () => void;
@@ -21,12 +23,12 @@ export function RecentSearches({
           Clear all
         </button>
       </div>
-      {recents.map((query) => (
+      {recents.map((query, index) => (
         <CommandPaletteRow
           key={query}
           icon="search"
           title={query}
-          isSelected={false}
+          isSelected={selectedIndex === index}
           onClick={() => onSelect(query)}
           onRemove={() => onRemove(query)}
         />
