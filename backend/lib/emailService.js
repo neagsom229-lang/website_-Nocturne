@@ -98,7 +98,7 @@ export async function checkAndSendNewDeviceEmail(database, user, { ip, userAgent
 
     if (!existing) {
       const recentDevice = await database.prepare(`
-        SELECT 1 FROM user_devices WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'
+        SELECT 1 FROM user_devices WHERE user_id = $1 AND first_seen_at > NOW() - INTERVAL '1 hour'
       `).get(user.id);
 
       await database.prepare(`

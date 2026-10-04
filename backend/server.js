@@ -109,14 +109,6 @@ const cookieOptions = {
 };
 
 async function authenticate(request, response, next) {
-  console.info('[auth] path check', {
-    originalUrl: request.originalUrl,
-    path: request.path,
-    baseUrl: request.baseUrl,
-    method: request.method,
-    hasCookie: !!request.cookies[sessionCookie],
-  });
-
   const publicPaths = [
     '/auth/signup',
     '/auth/signin',

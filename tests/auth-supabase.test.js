@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import bcrypt from 'bcryptjs';
 import { readFile } from 'node:fs/promises';
+import { checkAndSendNewDeviceEmail } from '../backend/lib/emailService.js';
 
 class MockAuthDatabase {
   constructor(users = []) {
@@ -123,4 +124,17 @@ test('signin migration: signInWithPassword fails after createUser succeeds -> le
   const db = new MockAuthDatabase([user]);
 
   assert.equal(user.legacy_auth, true);
+});
+
+test('checkAndSendNewDeviceEmail handles first-time device login without error using first_seen_at column', async () => {
+  const db = new MockAuthDatabase();
+  const user = { id: 'u-device', email: 'device@example.com', display_name: 'Device User' };
+
+  await assert.doesNotReject(async () => {
+    await checkAndSendNewDeviceEmail(db, user, {
+      ip: '127.0.0.1',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0)',
+      acceptLanguage: 'en-US'
+    });
+  }, 'checkAndSendNewDeviceEmail should not throw error on first-time device login');
 });

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS user_devices (
   device_hash TEXT NOT NULL,
   user_agent TEXT,
   ip TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, device_hash)
 );
 CREATE INDEX IF NOT EXISTS user_devices_user_id_idx ON user_devices(user_id);
