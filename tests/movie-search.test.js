@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   getTrendingMovies,
   searchMovies,
+  getNowPlayingMovies,
   MovieSearchError,
   normalizeMovie,
   normalizeMovieDetails,
@@ -63,6 +64,23 @@ test('searchMovies returns degraded true when provider fails and cache is empty'
   const res = await searchMovies('nonexistent');
   assert.equal(res.degraded, true);
   assert.deepEqual(res.results, []);
+
+  global.fetch = originalFetch;
+  process.env.TMDB_API_KEY = originalKey;
+});
+
+test('getNowPlayingMovies returns results or degraded state safely', async () => {
+  const originalKey = process.env.TMDB_API_KEY;
+  process.env.TMDB_API_KEY = 'test-key';
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({ results: [{ id: 101, title: 'Now Playing Movie' }] }),
+  });
+
+  const res = await getNowPlayingMovies();
+  assert.equal(res.degraded, false);
+  assert.equal(res.results.length, 1);
 
   global.fetch = originalFetch;
   process.env.TMDB_API_KEY = originalKey;

@@ -9,6 +9,7 @@ import {
   getTvVideos,
   getTrendingMovies,
   getUpcomingMovies,
+  getNowPlayingMovies,
   MovieSearchError,
   normalizeMovie,
   normalizeMovieDetails,
@@ -46,6 +47,30 @@ router.get('/trending', async (request, response) => {
   }
 });
 
+router.get('/upcoming', async (_request, response) => {
+  try {
+    const res = await getUpcomingMovies();
+    const raw = Array.isArray(res.results) ? res.results : (Array.isArray(res) ? res : []);
+    const results = raw.map(normalizeMovie);
+    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
+  } catch (error) {
+    console.error('Upcoming movies error:', error);
+    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
+  }
+});
+
+router.get('/now-playing', async (_request, response) => {
+  try {
+    const res = await getNowPlayingMovies();
+    const raw = Array.isArray(res.results) ? res.results : (Array.isArray(res) ? res : []);
+    const results = raw.map(normalizeMovie);
+    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
+  } catch (error) {
+    console.error('Now playing movies error:', error);
+    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
+  }
+});
+
 router.get('/tv/:id', async (request, response) => {
   const id = request.params.id;
   if (!/^\d+$/.test(id)) {
@@ -73,18 +98,6 @@ router.get('/tv/:id', async (request, response) => {
   } catch (error) {
     console.error('TV detail error:', error);
     return response.json({ show: null, degraded: true, reason: 'tv_unavailable' });
-  }
-});
-
-router.get('/upcoming', async (_request, response) => {
-  try {
-    const res = await getUpcomingMovies();
-    const raw = Array.isArray(res.results) ? res.results : (Array.isArray(res) ? res : []);
-    const results = raw.map(normalizeMovie);
-    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
-  } catch (error) {
-    console.error('Upcoming movies error:', error);
-    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
   }
 });
 
