@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, useCallback } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
@@ -6,6 +6,7 @@ import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import { fetchMediaLibrary } from '../lib/mediaApi';
+import { useFetchWithRetry } from '../lib/useFetchWithRetry';
 import {
   fetchMovieDetails,
   fetchTrendingMovies,
@@ -45,32 +46,22 @@ export function MoviesPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q')?.trim() ?? '';
   const [input, setInput] = useState(query);
-  const [movies, setMovies] = useState<MovieSummary[]>([]);
-  const [upcoming, setUpcoming] = useState<MovieSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => setInput(query), [query]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError('');
-    const load = query
-      ? searchMovies(query)
-      : Promise.all([fetchTrendingMovies(), fetchUpcomingMovies()]).then(([trending, next]) => {
-        if (active) setUpcoming(next);
-        return trending;
-      });
-    void load.then((results) => {
-      if (active) setMovies(results);
-    }).catch((loadError: unknown) => {
-      if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load movies.');
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
-    return () => { active = false; };
+  const fetchFn = useCallback(() => {
+    if (query) return searchMovies(query);
+    return Promise.all([fetchTrendingMovies(), fetchUpcomingMovies()]).then(([trending, upcoming]) => ({
+      results: trending,
+      upcoming,
+      degraded: false,
+    }));
   }, [query]);
+
+  const { data, loading, degraded, error, retry } = useFetchWithRetry(fetchFn, { results: [] as MovieSummary[], upcoming: [] as MovieSummary[] });
+
+  const movies = query ? (Array.isArray(data) ? data : (data.results ?? [])) : (data.results ?? []);
+  const upcoming = query ? [] : (data.upcoming ?? []);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,7 +89,14 @@ export function MoviesPage() {
         />
         <button className="btn btn--primary btn--sm" type="submit">Search</button>
       </form>
-      {error ? <div className="music-error" role="alert">{error}</div> : null}
+
+      {degraded || error ? (
+        <div className="discovery-retry" role="status" style={{ marginBottom: '16px' }}>
+          <span>Couldn't reach TMDB right now. {movies.length ? 'Showing cached results.' : 'In the meantime, try Music or Podcasts.'}</span>
+          <button type="button" onClick={retry}>Retry</button>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="media-grid" role="status" aria-label="Loading movies">
           {Array.from({ length: 6 }, (_, index) => <div className="media-skeleton" key={index}><div className="media-skeleton__art" /></div>)}
@@ -108,17 +106,21 @@ export function MoviesPage() {
           <div className="movie-section-heading">
             <h2 className="t-h2">{query ? `Results for “${query}”` : 'Trending this week'}</h2>
           </div>
-          <div className="media-grid">{movies.map((movie) => <MovieCard key={movie.tmdb_id} movie={movie} />)}</div>
+          <div className="media-grid">{movies.map((movie: MovieSummary) => <MovieCard key={movie.tmdb_id} movie={movie} />)}</div>
           {!query && upcoming.length ? (
             <section className="movie-section">
               <div className="movie-section-heading"><h2 className="t-h2">Coming up</h2></div>
-              <div className="media-grid">{upcoming.slice(0, 6).map((movie) => <MovieCard key={movie.tmdb_id} movie={movie} />)}</div>
+              <div className="media-grid">{upcoming.slice(0, 6).map((movie: MovieSummary) => <MovieCard key={movie.tmdb_id} movie={movie} />)}</div>
             </section>
           ) : null}
         </>
-      ) : !error ? (
-        <EmptyState icon="search" title="No movies found." body="Try another title or clear your search to see what’s trending." />
-      ) : null}
+      ) : (
+        <EmptyState
+          icon="search"
+          title={degraded ? "Couldn't reach TMDB." : "No movies found."}
+          body={degraded ? "In the meantime, try exploring Music or Podcasts." : "Try another title or clear your search to see what’s trending."}
+        />
+      )}
     </section>
   );
 }
@@ -138,8 +140,8 @@ export function MovieDetailPage() {
     let active = true;
     setLoading(true);
     setError('');
-    void fetchMovieDetails(id).then((details) => {
-      if (active) setMovie(details);
+    void fetchMovieDetails(id).then((res) => {
+      if (active) setMovie(res);
     }).catch((loadError: unknown) => {
       if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load this movie.');
     }).finally(() => {

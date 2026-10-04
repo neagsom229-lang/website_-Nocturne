@@ -17,45 +17,6 @@ import {
 import { getCachedGenreRecommendations, refreshGenreRecommendations } from '../services/movieGenreCache.js';
 
 const router = Router();
-const CACHE_TTL = "INTERVAL '24 hours'";
-
-async function cachedTmdb(query, load) {
-  const cached = await db.prepare(`
-    SELECT response_json AS "responseJson" FROM search_cache
-    WHERE query = $1 AND type = 'movie' AND expires_at > NOW()
-  `).get(query);
-  if (cached) {
-    try {
-      return JSON.parse(cached.responseJson);
-    } catch (error) {
-      console.error('Invalid TMDB cache entry:', error);
-      await db.prepare("DELETE FROM search_cache WHERE query = $1 AND type = 'movie'").run(query);
-    }
-  }
-
-  const payload = await load();
-  try {
-    await db.prepare(`
-      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
-      VALUES ($1, 'movie', 'relevance', $2, NOW() + ${CACHE_TTL})
-      ON CONFLICT (query, type, sort) DO UPDATE SET
-        response_json = excluded.response_json,
-        expires_at = excluded.expires_at
-    `).run(query, JSON.stringify(payload));
-  } catch (error) {
-    recordCacheWriteFailure(error);
-  }
-  return payload;
-}
-
-function handleProviderError(error, response) {
-  if (!(error instanceof MovieSearchError)) {
-    console.error('TMDB request failed:', error);
-    return response.status(502).json({ error: 'The movie provider could not complete the request.' });
-  }
-  if (error.status >= 500) console.error(`TMDB provider error: ${error.message}`);
-  return response.status(error.status).json({ error: error.message });
-}
 
 router.get('/search', async (request, response) => {
   const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
@@ -63,26 +24,25 @@ router.get('/search', async (request, response) => {
     return response.status(400).json({ error: 'A movie search query of 1 to 200 characters is required.' });
   }
   try {
-    const results = await cachedTmdb(`search:${query.toLowerCase()}`, async () => {
-      const result = await searchMovies(query);
-      return Array.isArray(result.results) ? result.results.map(normalizeMovie) : [];
-    });
-    return response.json({ results });
+    const res = await searchMovies(query);
+    const results = Array.isArray(res.results) ? res.results.map(normalizeMovie) : [];
+    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Movie search error:', error);
+    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
   }
 });
 
 router.get('/trending', async (request, response) => {
   const timeWindow = request.query.window === 'day' ? 'day' : 'week';
   try {
-    const results = await cachedTmdb(`trending:${timeWindow}`, async () => {
-      const result = await getTrendingMovies(timeWindow);
-      return Array.isArray(result.results) ? result.results.map(normalizeMovie) : [];
-    });
-    return response.json({ results });
+    const res = await getTrendingMovies(timeWindow);
+    const raw = Array.isArray(res.results) ? res.results : (Array.isArray(res) ? res : []);
+    const results = raw.map(normalizeMovie);
+    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Trending movies error:', error);
+    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
   }
 });
 
@@ -92,31 +52,39 @@ router.get('/tv/:id', async (request, response) => {
     return response.status(400).json({ error: 'Provide a valid TMDB TV show ID.' });
   }
   try {
-    const show = await cachedTmdb(`tv-detail:${id}`, async () => {
-      const [details, videos] = await Promise.all([getTvDetails(id), getTvVideos(id)]);
-      const normalized = normalizeMovieDetails(details, Array.isArray(videos.results) ? videos.results : []);
-      return {
-        ...normalized,
-        seasons: Array.isArray(details.seasons) ? details.seasons : [],
-        number_of_seasons: details.number_of_seasons ?? 1,
-        number_of_episodes: details.number_of_episodes ?? 0,
-      };
-    });
-    return response.json({ show });
+    const [detailsRes, videosRes] = await Promise.all([getTvDetails(id), getTvVideos(id)]);
+    const degraded = Boolean(detailsRes.degraded || videosRes.degraded);
+    const reason = detailsRes.reason || videosRes.reason || null;
+    const details = detailsRes.degraded && !detailsRes.id ? null : detailsRes;
+    const videos = Array.isArray(videosRes.results) ? videosRes.results : [];
+
+    if (!details || !details.id) {
+      return response.json({ show: null, degraded: true, reason: reason || 'tv_unavailable' });
+    }
+
+    const normalized = normalizeMovieDetails(details, videos);
+    const show = {
+      ...normalized,
+      seasons: Array.isArray(details.seasons) ? details.seasons : [],
+      number_of_seasons: details.number_of_seasons ?? 1,
+      number_of_episodes: details.number_of_episodes ?? 0,
+    };
+    return response.json({ show, degraded, reason });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('TV detail error:', error);
+    return response.json({ show: null, degraded: true, reason: 'tv_unavailable' });
   }
 });
 
 router.get('/upcoming', async (_request, response) => {
   try {
-    const results = await cachedTmdb('upcoming', async () => {
-      const result = await getUpcomingMovies();
-      return Array.isArray(result.results) ? result.results.map(normalizeMovie) : [];
-    });
-    return response.json({ results });
+    const res = await getUpcomingMovies();
+    const raw = Array.isArray(res.results) ? res.results : (Array.isArray(res) ? res : []);
+    const results = raw.map(normalizeMovie);
+    return response.json({ results, degraded: Boolean(res.degraded), reason: res.reason || null });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Upcoming movies error:', error);
+    return response.json({ results: [], degraded: true, reason: 'tmdb_unavailable' });
   }
 });
 
@@ -128,9 +96,10 @@ router.get('/genre/:genreId', async (request, response) => {
   try {
     let results = await getCachedGenreRecommendations(db, genreId);
     if (!results) results = await refreshGenreRecommendations(db, genreId);
-    return response.json({ results });
+    return response.json({ results: results || [], degraded: false });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Genre recommendation error:', error);
+    return response.json({ results: [], degraded: true, reason: 'genre_unavailable' });
   }
 });
 
@@ -145,23 +114,17 @@ router.post('/save', async (request, response) => {
 
   const id = String(Number(tmdbId));
   try {
-    let details = await cachedTmdb(mediaType === 'movie' ? `detail:${id}` : `tv-detail:${id}`, async () => {
-      const [movie, videos] = mediaType === 'tv'
-        ? await Promise.all([getTvDetails(id), getTvVideos(id)])
-        : await Promise.all([getMovieDetails(id), getMovieVideos(id)]);
-      return normalizeMovieDetails(movie, Array.isArray(videos.results) ? videos.results : []);
-    });
-    if (!Array.isArray(details.genre_details)) {
-      const providerDetails = mediaType === 'tv' ? await getTvDetails(id) : await getMovieDetails(id);
-      details = {
-        ...details,
-        genre_details: Array.isArray(providerDetails.genres)
-          ? providerDetails.genres.flatMap(({ id: genreId, name }) => (
-            Number.isInteger(genreId) && typeof name === 'string' ? [{ id: genreId, name }] : []
-          ))
-          : [],
-      };
+    const [detailsRes, videosRes] = mediaType === 'tv'
+      ? await Promise.all([getTvDetails(id), getTvVideos(id)])
+      : await Promise.all([getMovieDetails(id), getMovieVideos(id)]);
+
+    const details = detailsRes;
+    const videos = Array.isArray(videosRes.results) ? videosRes.results : [];
+    if (!details || !details.id) {
+      return response.status(503).json({ error: 'The movie provider is currently unavailable.' });
     }
+
+    const normalized = normalizeMovieDetails(details, videos);
     const { saved, item } = await db.transaction(async (tx) => {
       const inserted = await tx.prepare(`
         INSERT INTO media_library
@@ -176,14 +139,14 @@ router.post('/save', async (request, response) => {
         request.user.id,
         id,
         mediaType,
-        details.title,
-        details.poster_url,
-        details.trailer_url ?? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
+        normalized.title,
+        normalized.poster_url,
+        normalized.trailer_url ?? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
         `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${id}`,
-        details.year ? Number(details.year) : null,
-        details.rating,
-        details.overview,
-        details.trailer_url,
+        normalized.year ? Number(normalized.year) : null,
+        normalized.rating,
+        normalized.overview,
+        normalized.trailer_url,
       );
       const savedItem = await tx.prepare(`
         SELECT id, media_type AS "mediaType", external_id AS "externalId", title,
@@ -198,21 +161,15 @@ router.post('/save', async (request, response) => {
         ON CONFLICT (media_library_id, genre_id) DO UPDATE
           SET genre_name = excluded.genre_name
       `);
-      for (const genre of details.genre_details ?? []) {
+      for (const genre of normalized.genre_details ?? []) {
         await insertGenre.run(savedItem.id, genre.id, genre.name);
       }
       return { saved: inserted, item: savedItem };
     });
-    const genreIds = (details.genre_details ?? []).slice(0, 3).map((genre) => genre.id);
-    void Promise.all(genreIds.map(async (genreId) => {
-      const cached = await getCachedGenreRecommendations(db, genreId);
-      if (!cached) await refreshGenreRecommendations(db, genreId);
-    })).catch((error) => {
-      console.error('Could not prewarm movie genre recommendations:', error);
-    });
     return response.status(saved.changes ? 201 : 200).json({ item, alreadySaved: !saved.changes });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Save movie error:', error);
+    return response.status(502).json({ error: 'Could not save this movie right now.' });
   }
 });
 
@@ -221,16 +178,24 @@ router.get('/:id', async (request, response) => {
     return response.status(400).json({ error: 'A numeric TMDB movie ID is required.' });
   }
   try {
-    const movie = await cachedTmdb(`detail:${request.params.id}`, async () => {
-      const [details, videos] = await Promise.all([
-        getMovieDetails(request.params.id),
-        getMovieVideos(request.params.id),
-      ]);
-      return normalizeMovieDetails(details, Array.isArray(videos.results) ? videos.results : []);
-    });
-    return response.json({ movie });
+    const [detailsRes, videosRes] = await Promise.all([
+      getMovieDetails(request.params.id),
+      getMovieVideos(request.params.id),
+    ]);
+    const degraded = Boolean(detailsRes.degraded || videosRes.degraded);
+    const reason = detailsRes.reason || videosRes.reason || null;
+    const details = detailsRes.degraded && !detailsRes.id ? null : detailsRes;
+    const videos = Array.isArray(videosRes.results) ? videosRes.results : [];
+
+    if (!details || !details.id) {
+      return response.json({ movie: null, degraded: true, reason: reason || 'movie_unavailable' });
+    }
+
+    const movie = normalizeMovieDetails(details, videos);
+    return response.json({ movie, degraded, reason });
   } catch (error) {
-    return handleProviderError(error, response);
+    console.error('Movie detail error:', error);
+    return response.json({ movie: null, degraded: true, reason: 'movie_unavailable' });
   }
 });
 

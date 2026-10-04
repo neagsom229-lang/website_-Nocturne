@@ -1,3 +1,5 @@
+import { providerFetch } from '../lib/providerFetch.js';
+
 const TMDB_API = 'https://api.themoviedb.org/3';
 
 export class MovieSearchError extends Error {
@@ -8,37 +10,67 @@ export class MovieSearchError extends Error {
   }
 }
 
-async function requestTmdb(path, params = {}) {
+async function requestTmdb(path, params = {}, cacheKey) {
   const apiKey = process.env.TMDB_API_KEY;
-  if (!apiKey) throw new MovieSearchError('Movie search is not configured yet. Add TMDB_API_KEY to the server environment.', 503);
+  if (!apiKey) {
+    console.warn('[tmdb] TMDB_API_KEY is not configured.');
+    return { results: [], degraded: true, reason: 'tmdb_unconfigured' };
+  }
 
   const url = new URL(`${TMDB_API}${path}`);
   url.search = new URLSearchParams({ api_key: apiKey, ...params }).toString();
+  const requestUrl = url.toString();
+
   let response;
-  try {
-    response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  } catch {
-    throw new MovieSearchError('The movie provider could not be reached.');
+  let errorBody = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      response = await fetch(requestUrl, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const json = await response.json();
+        return { ...json, degraded: false, reason: null };
+      }
+      errorBody = await response.text().catch(() => '');
+      if (response.status < 500 && response.status !== 429) break;
+    } catch (err) {
+      errorBody = err.message || String(err);
+      if (attempt === 2) {
+        console.error('[tmdb] request failed', {
+          url: requestUrl.replace(apiKey, 'REDACTED'),
+          status: response?.status,
+          body: errorBody?.slice(0, 300),
+        });
+      }
+    }
   }
-  if (!response.ok) {
-    throw new MovieSearchError(
-      `The movie provider returned status ${response.status}.`,
-      response.status === 404 ? 404 : 502,
-    );
+
+  if (cacheKey) {
+    try {
+      const { db } = await import('../db.js');
+      const cached = await db.prepare(`
+        SELECT response_json AS "responseJson" FROM search_cache
+        WHERE query = $1 AND type = 'movie'
+      `).get(cacheKey);
+      if (cached?.responseJson) {
+        const cachedPayload = JSON.parse(cached.responseJson);
+        console.warn(`[tmdb] fallback to cache for ${cacheKey}`);
+        return { results: cachedPayload, degraded: true, reason: 'tmdb_unavailable_cached' };
+      }
+    } catch (e) {}
   }
-  try {
-    return await response.json();
-  } catch {
-    throw new MovieSearchError('The movie provider returned an invalid response.');
-  }
+
+  return { results: [], degraded: true, reason: 'tmdb_unavailable' };
 }
 
-export function searchMovies(query) {
-  return requestTmdb('/search/movie', { query });
+export async function searchMovies(query) {
+  const res = await requestTmdb('/search/movie', { query }, `search:${query.toLowerCase()}`);
+  if (res.degraded && !res.results) res.results = [];
+  return res;
 }
 
-export function getMovieDetails(id) {
-  return requestTmdb(`/movie/${encodeURIComponent(id)}`, { append_to_response: 'credits' });
+export async function getMovieDetails(id) {
+  const res = await requestTmdb(`/movie/${encodeURIComponent(id)}`, { append_to_response: 'credits' }, `detail:${id}`);
+  return res;
 }
 
 export function getMoviesByGenre(genreId) {
@@ -48,34 +80,34 @@ export function getMoviesByGenre(genreId) {
   return requestTmdb('/discover/movie', {
     with_genres: String(genreId),
     sort_by: 'popularity.desc',
-  });
+  }, `genre:${genreId}`);
 }
 
-export function getTvDetails(id) {
-  return requestTmdb(`/tv/${encodeURIComponent(id)}`, { append_to_response: 'credits' });
+export async function getTvDetails(id) {
+  return requestTmdb(`/tv/${encodeURIComponent(id)}`, { append_to_response: 'credits' }, `tv-detail:${id}`);
 }
 
 export function getTrendingMovies(timeWindow = 'week') {
   if (timeWindow !== 'day' && timeWindow !== 'week') {
     throw new MovieSearchError('timeWindow must be "day" or "week".', 400);
   }
-  return requestTmdb(`/trending/movie/${timeWindow}`);
+  return requestTmdb(`/trending/movie/${timeWindow}`, {}, `trending:${timeWindow}`);
 }
 
-export function getUpcomingMovies() {
-  return requestTmdb('/movie/upcoming');
+export async function getUpcomingMovies() {
+  return requestTmdb('/movie/upcoming', {}, 'upcoming');
 }
 
-export function getNowPlayingMovies() {
-  return requestTmdb('/movie/now_playing');
+export async function getNowPlayingMovies() {
+  return requestTmdb('/movie/now_playing', {}, 'now_playing');
 }
 
-export function getMovieVideos(id) {
-  return requestTmdb(`/movie/${encodeURIComponent(id)}/videos`);
+export async function getMovieVideos(id) {
+  return requestTmdb(`/movie/${encodeURIComponent(id)}/videos`, {}, `videos:${id}`);
 }
 
-export function getTvVideos(id) {
-  return requestTmdb(`/tv/${encodeURIComponent(id)}/videos`);
+export async function getTvVideos(id) {
+  return requestTmdb(`/tv/${encodeURIComponent(id)}/videos`, {}, `tv-videos:${id}`);
 }
 
 export function normalizeMovie(movie) {
@@ -90,9 +122,9 @@ export function normalizeMovie(movie) {
 }
 
 export function normalizeMovieDetails(movie, videos) {
-  const trailer = videos.find((video) => (
+  const trailer = (Array.isArray(videos) ? videos : []).find((video) => (
     video.site === 'YouTube' && video.type === 'Trailer' && video.key
-  )) ?? videos.find((video) => video.site === 'YouTube' && video.key);
+  )) ?? (Array.isArray(videos) ? videos : []).find((video) => video.site === 'YouTube' && video.key);
   return {
     ...normalizeMovie(movie),
     backdrop_url: movie.backdrop_path ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : null,

@@ -70,6 +70,8 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
     signedIn,
   );
 
+  const failedCount = [trending.error, releases.error, playlists.error, forYou.error, following.error].filter(Boolean).length;
+
   const heroItems = useMemo(() => [
     ...trending.items.movies,
     ...releases.items.podcasts,
@@ -112,7 +114,8 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
     if (media.media_type === 'movie') {
       try {
         const details = await fetchMovieDetails(media.id);
-        if (!details.trailer_url) {
+        const trailer = details.trailer_url;
+        if (!trailer) {
           navigate(`/movies/${encodeURIComponent(media.id)}`);
           return;
         }
@@ -124,8 +127,8 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
           title: media.title,
           artist: null,
           thumbnailUrl: media.thumbnail_url,
-          streamUrl: details.trailer_url,
-          externalUrl: details.trailer_url,
+          streamUrl: trailer,
+          externalUrl: trailer,
         });
       } catch (error) {
         console.error('Could not load the featured movie trailer:', error);
@@ -153,6 +156,12 @@ function DiscoveryHome({ signedIn }: { signedIn: boolean }) {
 
   return (
     <div className="discovery-home">
+      {failedCount >= 3 ? (
+        <div className="discovery-banner-error" role="alert" style={{ background: 'var(--color-surface-elevated, #222)', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Some sections are temporarily unavailable. We are trying to reconnect.</span>
+        </div>
+      ) : null}
+
       <header
         className="discovery-hero"
         aria-roledescription="carousel"

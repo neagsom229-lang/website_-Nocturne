@@ -94,6 +94,19 @@ without stored genre rows. `/api/discover/for-you` uses cached genre
 recommendations where available and falls back to trending without making
 per-movie TMDB detail requests.
 
+## Provider Failure Playbook
+
+Nocturne is built for resilience. External third-party media providers (TMDB, iTunes, Audius, YouTube, Deezer, LibriVox) may occasionally experience downtime, rate-limiting, or network partitions. The system is designed with a 5-second timeout, 1 retry, automatic PostgreSQL `search_cache` fallbacks (up to 7 days), and graceful UI degradation so that pages and shelves never crash or show raw 503 errors.
+
+| Provider | Service / Domain | Failure Cause | Backend Behavior | Frontend / UI Degradation |
+| --- | --- | --- | --- | --- |
+| **TMDB** | Movies & TV (`api.themoviedb.org`) | Missing API key, timeout (>5s), rate limit, 5xx | Returns `{ results: [], degraded: true, reason: 'tmdb_unavailable' }` (falling back to `search_cache` if available). Never throws 5xx. | Movies page and movie shelves show a friendly inline notice: *"Couldn't reach TMDB right now. Showing cached results."* (or empty state with Retry button), keeping the rest of the page fully functional. |
+| **iTunes** | Podcasts & Video Podcasts (`itunes.apple.com`) | Rate limit, network error, upstream downtime | Falls back to cached results or curated seed catalogs (`curated-seeds.json`). Logs warning. | Podcast shelves and podcast search render available seeded or cached items with inline retry option. |
+| **Audius** | Music & Trending Tracks (`discoveryprovider.audius.co`) | Node outage, timeout, rate limit | Falls back to secondary search terms or curated music seed tracks. | Music shelves and discover page degrade gracefully to curated music catalog. |
+| **YouTube** | Video & Trailer Search (`googleapis.com`) | Missing API key, timeout, quota exceeded | Returns empty results array with degraded flag. | Video player or video search shows inline retry notice; audio playback and other features remain active. |
+| **Deezer** | Music Previews (`api.deezer.com`) | Network error, timeout | Returns empty results / fallback. | Inline notification with retry button. |
+| **LibriVox** | Audiobooks (`librivox.org`) | Timeout, upstream error | Returns empty results / fallback. | Audiobook detail/search degrades gracefully with retry options. |
+
 ## Verify All Media Types
 
 □ Search "inception" → movie card appears → click → detail page → trailer plays
