@@ -3,13 +3,17 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { supabase } from '../lib/supabaseClient';
 
-async function waitForSession(timeoutMs = 3000) {
+async function waitForSession(timeoutMs = 10000) {
   const start = Date.now();
+  let attempts = 0;
   while (Date.now() - start < timeoutMs) {
+    attempts++;
     const { data: { session } } = await supabase.auth.getSession();
+    console.info(`[callback] poll #${attempts}: session=${session ? 'yes' : 'no'}`);
     if (session) return session;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
   }
+  console.error('[callback] timed out waiting for session after', timeoutMs, 'ms');
   return null;
 }
 
@@ -18,19 +22,31 @@ export function AuthCallback() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const ranRef = useRef(false);
+  const guard = useRef(false);
 
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-
+    if (guard.current) return;
+    guard.current = true;
+    
     async function handleCallback() {
+      console.info('[callback] URL:', window.location.href);
+      console.info('[callback] hash:', window.location.hash.slice(0, 50));
+      console.info('[callback] search:', window.location.search);
+      
       try {
-        const session = await waitForSession(3000);
-        if (!session) {
-          throw new Error('Sign-in link may have expired — try again');
+        const params = new URLSearchParams(window.location.search);
+        const hash = new URLSearchParams(window.location.hash.replace('#', ''));
+        const supabaseError = params.get('error') || hash.get('error');
+        const supabaseErrorDesc = params.get('error_description') || hash.get('error_description');
+        if (supabaseError) {
+          throw new Error(`Supabase OAuth error: ${supabaseError} — ${supabaseErrorDesc}`);
         }
 
+        const session = await waitForSession(10000);
+        if (!session) throw new Error('Supabase session not found after 10s');
+        
+        console.info('[callback] got session, user:', session.user?.email);
+        
         const res = await fetch('/api/auth/callback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -40,24 +56,32 @@ export function AuthCallback() {
           }),
           credentials: 'same-origin',
         });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Session exchange failed');
-        }
-
+        
+        const body = await res.json().catch(() => ({}));
+        console.info('[callback] POST /api/auth/callback status:', res.status);
+        console.info('[callback] response body:', body);
+        
+        if (!res.ok) throw new Error(body.error || `Callback failed: ${res.status}`);
+        
         await supabase.auth.signOut();
-
+        
+        // Verify cookie is set before redirecting
+        const meRes = await fetch('/api/auth/me', { credentials: 'same-origin' });
+        console.info('[callback] /api/auth/me after callback:', meRes.status);
+        if (!meRes.ok) throw new Error('Cookie was not set — session invalid');
+        
         const redirectTo = searchParams.get('redirect') || searchParams.get('from') || '/';
+        console.info('[callback] success, redirecting to', redirectTo);
         navigate(redirectTo, { replace: true });
       } catch (err: any) {
-        setError(err?.message || 'Could not complete sign in.');
+        console.error('[callback] FAILED:', err);
+        setError(err.message || 'Could not complete sign in.');
       } finally {
         setLoading(false);
       }
     }
-    void handleCallback();
-  }, [searchParams.toString(), navigate]);
+    handleCallback();
+  }, [searchParams, navigate]);
 
   return (
     <main className="auth-page">

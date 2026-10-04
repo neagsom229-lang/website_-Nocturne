@@ -441,6 +441,10 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
   });
 
   router.post('/callback', async (request, response) => {
+    console.info('[auth] /callback received:', {
+      hasAccessToken: !!request.body?.access_token,
+      accessTokenLength: request.body?.access_token?.length,
+    });
     const { access_token } = request.body ?? {};
     if (!access_token) {
       return response.status(400).json({ error: 'Access token required' });
@@ -457,8 +461,10 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
       } else {
         await createServerSession(request, response, user.id, { refresh_token: request.body.refresh_token || 'oauth-token', expires_in: 3600 });
       }
+      console.info('[auth] /callback set cookie for user:', user.id);
       return response.json({ user });
     } catch (error) {
+      console.error('[auth] /callback failed:', error);
       console.error('Auth callback failed:', error);
       return response.status(500).json({ error: 'Authentication exchange failed' });
     }
