@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const PUBLIC_SUPABASE_URL = 'https://shgaguqairkhtdhazdnp.supabase.co';
-const PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZ2FndXFhaXJraHRkaGF6ZG5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.sig';
+const PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZ2FndXFhaXJraHRkaGF6ZG5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MjAwODgsImV4cCI6MjEwNjM5NjA4OH0.g2b7sc8RVWcCevpwR3fXFSwg6otlNY8Y8Zah9XheX8g';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
