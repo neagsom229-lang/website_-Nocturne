@@ -12,25 +12,48 @@ const missing = [
   !supabaseServiceRoleKey && 'SUPABASE_SERVICE_ROLE_KEY',
 ].filter(Boolean);
 
-if (isProd && missing.length) {
-  throw new Error(`[supabase] Missing required env vars in production: ${missing.join(', ')}`);
-}
-
 if (missing.length) {
-  console.warn(`[supabase] Missing env vars: ${missing.join(', ')}. Auth will not work until they are set.`);
-}
-if (supabaseUrl) {
+  const msg = `[supabase] Missing required env vars: ${missing.join(', ')}`;
+  if (isProd) {
+    throw new Error(msg);
+  } else {
+    console.warn(`${msg}. Auth and Supabase features will return 503 "Supabase not configured" until they are set.`);
+  }
+} else if (supabaseUrl) {
   console.info(`[supabase] configured for ${supabaseUrl}`);
 }
 
-export const supabaseAdmin = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseServiceRoleKey || 'placeholder-service-key',
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+const isConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseServiceRoleKey);
 
-export const supabaseClient = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-anon-key',
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
+function createUnconfiguredClient(_name) {
+  const throwErr = () => {
+    const err = new Error('Supabase not configured');
+    err.status = 503;
+    throw err;
+  };
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'auth') {
+        return new Proxy({}, {
+          get(t, p) {
+            if (p === 'admin') {
+              return new Proxy({}, {
+                get() { return throwErr; }
+              });
+            }
+            return throwErr;
+          }
+        });
+      }
+      return throwErr;
+    }
+  });
+}
+
+export const supabaseAdmin = isConfigured
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  : createUnconfiguredClient('supabaseAdmin');
+
+export const supabaseClient = isConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  : createUnconfiguredClient('supabaseClient');

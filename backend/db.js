@@ -24,8 +24,6 @@ console.info(
   + `as ${databaseUrl.username} `
   + `(ssl.rejectUnauthorized=${ssl?.rejectUnauthorized ?? 'default'})`,
 );
-await pool.query('SELECT 1');
-console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
 
 function databaseFor(query) {
   return {
@@ -271,6 +269,34 @@ const seed = async () => db.transaction(async (tx) => {
 });
 
 export async function initializeDatabase() {
+  const startTime = Date.now();
+  let attempts = 5;
+  let delay = 1000;
+  let connected = false;
+  let lastError;
+
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await pool.query('SELECT 1');
+      connected = true;
+      console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
+      break;
+    } catch (error) {
+      lastError = error;
+      console.warn(`[db] Connection attempt ${i}/${attempts} failed (host: ${databaseUrl.hostname}, port: ${databaseUrl.port || '5432'}). Error: ${error.message}`);
+      if (i < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
+
+  if (!connected) {
+    console.error(`[db] FATAL: Failed to connect to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'} after ${attempts} attempts.`);
+    console.error(`[db] Please check your DATABASE_URL environment variable and ensure PostgreSQL is running.`);
+    throw new Error(`Database connection failed: ${lastError?.message || 'ECONNREFUSED'}`);
+  }
+
   await seed();
   try {
     const expectedColumns = [
@@ -329,6 +355,9 @@ export async function initializeDatabase() {
   } catch (error) {
     console.debug('Could not verify search_cache_type_check constraint:', error.message);
   }
+
+  const durationMs = Date.now() - startTime;
+  console.info(`[db] Database initialized successfully in ${durationMs}ms`);
 }
 
 export function initializeUserData(user, tx) {

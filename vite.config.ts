@@ -1,35 +1,38 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const PUBLIC_SUPABASE_URL = 'https://shgaguqairkhtdhazdnp.supabase.co';
-const PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZ2FndXFhaXJraHRkaGF6ZG5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MjAwODgsImV4cCI6MjEwNjM5NjA4OH0.g2b7sc8RVWcCevpwR3fXFSwg6otlNY8Y8Zah9XheX8g';
+const FALLBACK_SUPABASE_URL = 'https://shgaguqairkhtdhazdnp.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoZ2FndXFhaXJraHRkaGF6ZG5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MjAwODgsImV4cCI6MjEwNjM5NjA4OH0.g2b7sc8RVWcCevpwR3fXFSwg6otlNY8Y8Zah9XheX8g';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const port = env.PORT || process.env.PORT || '3000';
+  const port = env.PORT || process.env.PORT || env.API_PORT || process.env.API_PORT || '3000';
+  const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL;
+  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_ANON_KEY;
+
   return {
     plugins: [react()],
     define: {
-      __SUPABASE_URL__: JSON.stringify(PUBLIC_SUPABASE_URL),
-      __SUPABASE_ANON_KEY__: JSON.stringify(PUBLIC_SUPABASE_ANON_KEY),
+      __SUPABASE_URL__: JSON.stringify(supabaseUrl),
+      __SUPABASE_ANON_KEY__: JSON.stringify(supabaseAnonKey),
     },
     server: {
       port: 5173,
       strictPort: false,
-proxy: {
-  '/api': {
-    target: `http://127.0.0.1:${port}`,
-    changeOrigin: true,
-    configure: (proxy) => {
-      proxy.on('error', (_err, _req, res) => {
-        if (res && !res.headersSent && typeof res.writeHead === 'function') {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'API is starting up' }));
-        }
-      });
-    },
-  },
-},
+      proxy: {
+        '/api': {
+          target: `http://127.0.0.1:${port}`,
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('error', (_err, _req, res) => {
+              if (res && !res.headersSent && typeof res.writeHead === 'function') {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'API is starting up' }));
+              }
+            });
+          },
+        },
+      },
     },
     build: {
       rollupOptions: {

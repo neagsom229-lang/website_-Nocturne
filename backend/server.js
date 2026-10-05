@@ -24,19 +24,14 @@ import { createSearchUnifiedRouter } from './routes/searchUnified.js';
 import { supabaseClient } from './lib/supabaseAdmin.js';
 
 import { createAuthRouter } from './routes/authSupabase.js';
+import { validateAndLoadConfig } from './config.js';
+
+const config = validateAndLoadConfig();
 
 const app = express();
-const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
-if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret || jwtSecret.length < 32) {
-  throw new Error('JWT_SECRET must be set to a random secret of at least 32 characters.');
-}
-
-console.info(`[env] TMDB_API_KEY: ${process.env.TMDB_API_KEY ? 'configured' : 'MISSING'}`);
-console.info(`[env] YOUTUBE_API_KEY: ${process.env.YOUTUBE_API_KEY ? 'configured' : 'MISSING'}`);
-console.info(`[env] SUPABASE_URL: ${process.env.SUPABASE_URL ? 'configured' : 'MISSING'}`);
-console.info(`[env] SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'configured' : 'MISSING'}`);
+const port = config.port;
+if (config.trustProxy) app.set('trust proxy', 1);
+const jwtSecret = config.jwtSecret;
 
 const unifiedSearchLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -46,20 +41,12 @@ const unifiedSearchLimiter = rateLimit({
   message: { error: 'Too many searches. Please slow down a little.' },
 });
 
-app.use('/api/search', unifiedSearchLimiter, createSearchUnifiedRouter({ database: db }));
-
-
 const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 app.disable('x-powered-by');
-// Content Security Policy configuration:
-// In development (NODE_ENV !== 'production'), a permissive CSP is applied to support Vite HMR (@vite/client),
-// inline scripts, eval, and local dev server origins.
-// In production (NODE_ENV === 'production'), a strict but functional CSP is applied via helmet restricting
-// scripts, connections, images, and frames to trusted domains. Note that mediaSrc includes 'https:'
-// intentionally to support arbitrary podcast audio CDNs (e.g. pdst.fm, podtrac.com, omny.fm, etc.) across RSS feeds.
+
 if (process.env.NODE_ENV === 'production') {
   app.use(
     helmet({
@@ -111,6 +98,21 @@ app.use(cors((request, callback) => {
 }));
 app.use(express.json());
 app.use(cookieParser());
+
+let isDatabaseReady = false;
+app.get('/api/health', (_request, response) => {
+  response.status(200).json({ status: 'ok', db: isDatabaseReady ? 'connected' : 'initializing' });
+});
+
+app.use('/api', (request, response, next) => {
+  if (request.path === '/health' || request.path === '/health/' || request.path === '/api/health') {
+    return next();
+  }
+  if (!isDatabaseReady) {
+    return response.status(503).json({ error: 'Database is starting up, please try again shortly.' });
+  }
+  next();
+});
 
 const sessionCookie = 'nocturne_session';
 const cookieOptions = {
@@ -206,8 +208,6 @@ async function authenticate(request, response, next) {
       await db.prepare(`
         UPDATE sessions SET refresh_token = $1, access_token_expires_at = $2, last_used_at = NOW() WHERE id = $3
       `).run(data.session.refresh_token, newExpiresAt, sessionId);
-      // Do NOT overwrite userId with data.user.id — the session's user_id is authoritative
-      // Refresh only rotates the tokens, not the user identity
     } catch {
       await db.prepare('DELETE FROM sessions WHERE id = $1').run(sessionId);
       response.clearCookie(sessionCookie, cookieOptions);
@@ -371,10 +371,6 @@ async function listJournalEntries(userId, mood = null) {
   `).all(userId, mood);
 }
 
-app.get('/api/health', (_request, response) => {
-  response.status(200).json({ status: 'ok' });
-});
-
 app.get('/api/admin/cache-stats', (request, response) => {
   const adminToken = process.env.ADMIN_TOKEN;
   const headerToken = request.headers['x-admin-token'];
@@ -392,14 +388,6 @@ const authLimiter = rateLimit({
   message: { error: 'Too many sign-in attempts. Take a breath and try again in a little while.' },
 });
 
-const searchLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  limit: 30,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { error: 'Too many searches. Please try again in a little while.' },
-});
-
 app.use('/api/auth', authLimiter, createAuthRouter({
   database: db,
   jwtSecret,
@@ -412,8 +400,7 @@ app.all('/api/auth/login', (req, res) => res.status(410).json({ error: 'Endpoint
 app.all('/api/auth/logout', (req, res) => res.status(410).json({ error: 'Endpoint deprecated. Please use /api/auth/signout' }));
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
-app.use('/api/search', createSearchUnifiedRouter({ database: db }));
-console.info('Mounted unified search routes at /api/search before global auth middleware');
+app.use('/api/search', unifiedSearchLimiter, createSearchUnifiedRouter({ database: db }));
 app.use('/api', authenticate);
 app.use('/api/users', createUsersRouter({ database: db, authenticate }));
 app.use('/api', createSocialRouter({ database: db, authenticate }));
@@ -421,61 +408,6 @@ app.use('/api/music', musicRouter);
 app.use('/api/movies', moviesRouter);
 app.use('/api/podcasts', podcastsRouter);
 app.use('/api/playlists', createPlaylistsRouter({ database: db, authenticate }));
-
-app.get('/api/search', searchLimiter, async (request, response, next) => {
-  const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
-  const type = request.query.type;
-  if (!query || query.length > 200) {
-    return response.status(400).json({ error: 'A search query of 1 to 200 characters is required' });
-  }
-  if (!['video', 'podcast', 'audio', 'video_podcast'].includes(type)) {
-    return response.status(400).json({ error: 'type must be "video", "podcast", "audio", or "video_podcast"' });
-  }
-
-  const cacheQuery = query.toLowerCase();
-  const cached = await db.prepare(`
-    SELECT response_json AS "responseJson" FROM search_cache
-    WHERE query = $1 AND type = $2 AND expires_at > NOW()
-  `).get(cacheQuery, type);
-  if (cached) {
-    try {
-      return response.json({ query, type, results: JSON.parse(cached.responseJson), cached: true });
-    } catch (error) {
-      console.error('Invalid media search cache entry:', error);
-      await db.prepare('DELETE FROM search_cache WHERE query = $1 AND type = $2').run(cacheQuery, type);
-    }
-  }
-
-  try {
-    const results = await searchExternalMedia(query, type);
-    await db.prepare(`
-      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
-      VALUES ($1, $2, 'relevance', $3, (NOW() + INTERVAL '15 minutes'))
-      ON CONFLICT(query, type, sort) DO UPDATE SET
-        response_json = excluded.response_json,
-        expires_at = excluded.expires_at
-    `).run(cacheQuery, type, JSON.stringify(results));
-    await db.prepare("DELETE FROM search_cache WHERE expires_at <= NOW()").run();
-    await db.prepare(`
-      DELETE FROM search_cache
-      WHERE (query, type) IN (
-        SELECT query, type FROM search_cache
-        ORDER BY expires_at DESC
-        OFFSET 1000
-      )
-    `).run();
-    return response.json({ query, type, results, cached: false });
-  } catch (error) {
-    if (error instanceof MediaSearchError) {
-      if (error.status >= 500) console.error(`Media search provider error: ${error.code}`);
-      const message = error.code === 'youtube_not_configured'
-        ? 'YouTube search is not ready yet. Try podcasts or audio while we finish setting up video search.'
-        : 'The media search provider could not complete the request.';
-      return response.status(error.status).json({ error: message });
-    }
-    return next(error);
-  }
-});
 
 app.get('/api/library', async (request, response) => {
   const items = await db.prepare(`
@@ -1080,8 +1012,6 @@ app.use((err, req, res, next) => {
 });
 });
 
-await initializeDatabase();
-
 const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
 const server = app.listen(port, host);
 server.on('error', (err) => {
@@ -1098,8 +1028,35 @@ server.on('error', (err) => {
     process.exit(1);
   }
 });
-server.on('listening', () => {
+server.on('listening', async () => {
   const activePort = server.address()?.port ?? port;
   console.log(`BEDROOM POP server listening on http://${host}:${activePort}`);
+  try {
+    await initializeDatabase();
+    isDatabaseReady = true;
+    console.info('[db] Database initialized successfully and ready for traffic.');
+  } catch (err) {
+    console.error('[db] Failed to initialize database:', err.message);
+  }
 });
 
+const shutdown = async (signal) => {
+  console.info(`[server] Received ${signal}. Shutting down gracefully...`);
+  server.close(async () => {
+    try {
+      await db.close();
+      console.info('[server] Database pool closed. Bye!');
+      process.exit(0);
+    } catch (err) {
+      console.error('[server] Error closing database pool:', err);
+      process.exit(1);
+    }
+  });
+  setTimeout(() => {
+    console.error('[server] Forced shutdown due to timeout.');
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
