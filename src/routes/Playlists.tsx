@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import { PlaylistFormModal } from '../components/PlaylistFormModal';
 import { useToast } from '../components/Toast';
 import { createPlaylist, getMyPlaylists, getPublicPlaylists } from '../lib/playlistsApi';
@@ -11,7 +12,7 @@ function PlaylistCard({ playlist }: { playlist: Playlist }) {
   return (
     <Link className="playlist-card" to={`/playlists/${playlist.id}`}>
       <span className="playlist-card__cover">
-        {playlist.coverUrl ? <img src={playlist.coverUrl} alt="" loading="lazy" /> : <span className="playlist-card__artwork" aria-hidden="true" />}
+        {playlist.coverUrl ? <SmartImage src={playlist.coverUrl} alt="" loading="lazy" /> : <span className="playlist-card__artwork" aria-hidden="true" />}
         <span className="playlist-card__cover-mark"><Icon name="headphones" size={26} /></span>
       </span>
       <span className="playlist-card__body">

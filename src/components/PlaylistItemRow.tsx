@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { SmartImage } from './SmartImage';
 import type { PlaylistItem } from '../types';
 
 function formatDuration(seconds: number) {
@@ -35,7 +36,7 @@ export function PlaylistItemRow({
     <article className="playlist-item">
       {owner ? dragHandle : null}
       <span className="playlist-item__thumb">
-        {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt="" loading="lazy" /> : <Icon name="headphones" size={20} />}
+        {item.thumbnailUrl ? <SmartImage src={item.thumbnailUrl} alt="" loading="lazy" /> : <Icon name="headphones" size={20} />}
       </span>
       <span className="playlist-item__info">
         <strong>{item.title}</strong>

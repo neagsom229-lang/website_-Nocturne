@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, useCallback } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
@@ -22,7 +23,7 @@ function MovieCard({ movie }: { movie: MovieSummary }) {
     <article className="media-card movie-card">
       <Link to={`/movies/${movie.tmdb_id}`} className="media-card__art" aria-label={`View ${movie.title}`}>
         {movie.poster_url
-          ? <img src={movie.poster_url} alt="" loading="lazy" />
+          ? <SmartImage src={movie.poster_url} alt="" loading="lazy" />
           : <span className="media-card__fallback"><Icon name="play-circle" size={28} /></span>}
         <span className="media-card__type">MOVIE</span>
         {movie.rating !== null ? <span className="movie-card__rating">★ {movie.rating.toFixed(1)}</span> : null}
@@ -196,7 +197,7 @@ export function MovieDetailPage() {
       <Link className="movie-back" to="/movies"><Icon name="arrow-left" size={16} /> Movies</Link>
       {error ? <div className="music-error" role="alert">{error}</div> : null}
       <div className="movie-detail__layout">
-        {movie.poster_url ? <img className="movie-detail__poster" src={movie.poster_url} alt={`Poster for ${movie.title}`} /> : null}
+        {movie.poster_url ? <SmartImage className="movie-detail__poster" src={movie.poster_url} alt={`Poster for ${movie.title}`} /> : null}
         <div className="movie-detail__copy">
           <p className="t-eyebrow">NOW SHOWING IN NOCTURNE</p>
           <h1 className="t-h1">{movie.title}</h1>

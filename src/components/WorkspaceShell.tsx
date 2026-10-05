@@ -14,6 +14,7 @@ import type { OnProgressProps } from 'react-player/base';
 import { useAuth } from '../auth/AuthContext';
 import { CoverArt } from './CoverArt';
 import { AddToPlaylistButton } from './AddToPlaylistButton';
+import { SmartImage } from './SmartImage';
 import { Icon, type IconName } from './Icon';
 import type { Mix, Track } from '../data/types';
 import { formatClock } from '../lib/hooks';
@@ -151,7 +152,7 @@ function PlayerDock() {
         {track ? (
           <span className="workspace-player__art">
             {externalMedia?.thumbnailUrl
-              ? <img src={externalMedia.thumbnailUrl} alt="" loading="lazy" />
+              ? <SmartImage src={externalMedia.thumbnailUrl} alt="" loading="lazy" />
               : <CoverArt seed={track.cover} ratio="square" />}
           </span>
         ) : (

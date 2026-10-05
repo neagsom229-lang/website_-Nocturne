@@ -6,6 +6,7 @@ import { FollowButton } from '../components/FollowButton';
 import { MediaCard } from '../components/MediaCard';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import {
   getUserConnections,
   getUserLikes,
@@ -148,7 +149,7 @@ export function ProfilePage() {
                   {playlists.map((playlist) => (
                     <Link className="profile-playlist" key={playlist.id} to={`/playlists/${playlist.id}`}>
                       <span className="profile-playlist__cover">
-                        {playlist.coverUrl ? <img src={playlist.coverUrl} alt="" loading="lazy" /> : <span />}
+                        {playlist.coverUrl ? <SmartImage src={playlist.coverUrl} alt="" loading="lazy" /> : <span />}
                       </span>
                       <strong>{playlist.name}</strong>
                       <small>{playlist.itemCount} tracks</small>

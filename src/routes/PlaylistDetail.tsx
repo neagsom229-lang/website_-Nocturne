@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import { PlaylistFormModal } from '../components/PlaylistFormModal';
 import { PlaylistItemRow } from '../components/PlaylistItemRow';
 import { CommentThread } from '../components/CommentThread';
@@ -188,7 +189,7 @@ export function PlaylistDetailPage() {
       {error ? <div className="music-error" role="alert">{error}</div> : null}
       <header className="playlist-detail__header">
         <span className="playlist-detail__cover">
-          {playlist.coverUrl ? <img src={playlist.coverUrl} alt="" /> : <span className="playlist-card__artwork" aria-hidden="true" />}
+          {playlist.coverUrl ? <SmartImage src={playlist.coverUrl} alt="" /> : <span className="playlist-card__artwork" aria-hidden="true" />}
           <Icon name="headphones" size={32} />
         </span>
         <div className="playlist-detail__copy">

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SmartImage } from './SmartImage';
 
 type Ratio = 'portrait' | 'square' | 'wide' | 'tall' | 'banner' | 'fill';
 
@@ -21,7 +22,7 @@ export function Media({ src, alt = '', ratio = 'portrait', className, scrim = fa
   const modifier = ratio === 'portrait' ? '' : ` media--${ratio}`;
   return (
     <div className={`media${modifier}${className ? ` ${className}` : ''}`} aria-hidden={src ? undefined : true}>
-      {src ? <img src={src} alt={alt} loading="lazy" decoding="async" /> : null}
+      {src ? <SmartImage src={src} alt={alt} loading="lazy" decoding="async" /> : null}
       <span className="media__overlay" aria-hidden="true" />
       {scrim ? <span className="media__scrim" aria-hidden="true" /> : null}
       {children}

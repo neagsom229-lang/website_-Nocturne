@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { MediaCard } from '../components/MediaCard';
 import { Shelf } from '../components/Shelf';
+import { SmartImage } from '../components/SmartImage';
 import { WorkspaceShell, useOptionalWorkspacePlayer } from '../components/WorkspaceShell';
 import { Icon } from '../components/Icon';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -63,10 +64,15 @@ function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded
   const player = useOptionalWorkspacePlayer();
   const navigate = useNavigate();
   const trendingFetchCount = useRef(0);
+  const trendingPromiseRef = useRef<Promise<TrendingFeed> | null>(null);
   const loadTrending = useCallback(async () => {
+    if (trendingPromiseRef.current) return trendingPromiseRef.current;
     trendingFetchCount.current += 1;
-    console.log(`[Home] /api/discover/trending fetch count on mount: ${trendingFetchCount.current}`);
-    return getTrending();
+    if (import.meta.env.DEV) {
+      console.info('[Home] trending fetch count:', trendingFetchCount.current);
+    }
+    trendingPromiseRef.current = getTrending();
+    return trendingPromiseRef.current;
   }, []);
   const trending = useSection(loadTrending, emptyTrending);
   const releases = useSection(getNewReleases, emptyReleases);
@@ -186,7 +192,7 @@ function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded
         }}
       >
         {featured?.thumbnail_url ? (
-          <img className="discovery-hero__backdrop" src={featured.thumbnail_url} alt="" />
+          <SmartImage className="discovery-hero__backdrop" src={featured.thumbnail_url} alt="" />
         ) : null}
         <div className="discovery-hero__content">
           <p className="discovery-eyebrow">A little something for tonight</p>
@@ -294,7 +300,7 @@ function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded
           <Link className="discovery-playlist-card" to={`/playlists/${playlist.id}`}>
             <div className="discovery-playlist-card__cover">
               {playlist.coverUrl
-                ? <img src={playlist.coverUrl} alt="" loading="lazy" />
+                ? <SmartImage src={playlist.coverUrl} alt="" loading="lazy" />
                 : <span aria-hidden="true" />}
             </div>
             <strong>{playlist.name}</strong>

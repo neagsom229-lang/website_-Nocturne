@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { SmartImage } from './SmartImage';
 
 /**
  * Artwork plates for the pack.
@@ -23,30 +24,30 @@ function hashSeed(seed: string): number {
   return Math.abs(hash);
 }
 
-/* Dark bases with a contained pool of accent light — the accent never fills the plate,
-   so the artwork reads as a lit room rather than a coloured rectangle. */
-const PLATES: string[] = [
-  'radial-gradient(58% 46% at 26% 16%, var(--tp-acc) 0%, transparent 64%), linear-gradient(158deg, var(--tp-surf-2) 0%, var(--tp-surf) 100%)',
-  'radial-gradient(46% 38% at 80% 18%, var(--tp-acc-2) 0%, transparent 70%), radial-gradient(52% 44% at 14% 86%, var(--tp-acc) 0%, transparent 72%), var(--tp-canvas)',
-  'repeating-linear-gradient(118deg, var(--tp-surf-2) 0 16px, var(--tp-surf) 16px 32px)',
-  'radial-gradient(70% 50% at 50% 116%, var(--tp-acc) 0%, transparent 66%), linear-gradient(200deg, var(--tp-surf-2) 0%, var(--tp-canvas) 100%)',
-  'repeating-linear-gradient(0deg, transparent 0 21px, var(--tp-line) 21px 22px), linear-gradient(140deg, var(--tp-surf) 0%, var(--tp-surf-2) 100%)',
-  'conic-gradient(from 214deg at 74% 20%, var(--tp-surf-2) 0deg, var(--tp-surf) 96deg, var(--tp-acc) 200deg, var(--tp-surf-2) 320deg, var(--tp-surf) 360deg)',
+const PLATES = [
+  'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08) 0%, rgba(0,0,0,0.2) 80%), linear-gradient(135deg, #2b2926 0%, #1a1917 100%)',
+  'radial-gradient(circle at 80% 30%, rgba(212,143,94,0.15) 0%, rgba(0,0,0,0.25) 70%), linear-gradient(145deg, #2c2420 0%, #161311 100%)',
+  'radial-gradient(circle at 40% 70%, rgba(142,158,143,0.12) 0%, rgba(0,0,0,0.3) 80%), linear-gradient(120deg, #212521 0%, #131513 100%)',
+  'radial-gradient(circle at 70% 80%, rgba(181,142,130,0.15) 0%, rgba(0,0,0,0.25) 75%), linear-gradient(160deg, #272020 0%, #141111 100%)',
+  'radial-gradient(circle at 30% 40%, rgba(143,158,171,0.12) 0%, rgba(0,0,0,0.3) 80%), linear-gradient(135deg, #1e2225 0%, #111314 100%)',
+  'radial-gradient(circle at 50% 20%, rgba(199,178,137,0.15) 0%, rgba(0,0,0,0.25) 70%), linear-gradient(150deg, #28251e 0%, #151411 100%)',
 ];
 
-export type CoverRatio = 'portrait' | 'square' | 'wide' | 'tall' | 'banner' | 'fill';
-
-type CoverArtProps = {
+export function CoverArt({
+  seed,
+  ratio = 'square',
+  label,
+  sublabel,
+  sticker,
+  className,
+}: {
   seed: string;
+  ratio?: 'square' | 'portrait' | 'card' | 'wide' | 'tall' | 'fill';
   label?: string;
   sublabel?: string;
-  ratio?: CoverRatio;
-  /** Mono sticker, top-left — only used on procedural plates. */
   sticker?: string;
   className?: string;
-};
-
-export function CoverArt({ seed, label, sublabel, ratio = 'square', sticker, className }: CoverArtProps) {
+}) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const photo = COVER_PHOTOS[seed];
   const usesPhoto = Boolean(photo) && !photoFailed;
@@ -62,7 +63,7 @@ export function CoverArt({ seed, label, sublabel, ratio = 'square', sticker, cla
       aria-hidden={label ? undefined : true}
     >
       {usesPhoto ? (
-        <img src={photo} alt="" onError={() => setPhotoFailed(true)} decoding="async" loading="lazy" />
+        <SmartImage src={photo} alt="" onError={() => setPhotoFailed(true)} decoding="async" loading="lazy" />
       ) : (
         <span className="cover__band" aria-hidden="true" />
       )}

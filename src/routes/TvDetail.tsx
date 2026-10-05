@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
@@ -122,7 +123,7 @@ export function TvDetail() {
     <section className="media-page movie-detail">
       <Link className="movie-back" to="/search"><Icon name="arrow-left" size={16} /> Search</Link>
       <div className="movie-detail__layout">
-        {show.poster_url ? <img className="movie-detail__poster" src={show.poster_url} alt="" /> : null}
+        {show.poster_url ? <SmartImage className="movie-detail__poster" src={show.poster_url} alt="" /> : null}
         <div className="movie-detail__copy">
           <p className="t-eyebrow">NOCTURNE TV SERIES</p>
           <h1 className="t-h1">{show.title}</h1>

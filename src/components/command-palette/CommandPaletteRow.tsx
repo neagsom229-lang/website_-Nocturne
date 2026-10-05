@@ -1,4 +1,5 @@
 import { Icon, type IconName } from '../Icon';
+import { SmartImage } from '../SmartImage';
 
 export function CommandPaletteRow({
   icon,
@@ -28,7 +29,7 @@ export function CommandPaletteRow({
       onClick={onClick}
     >
       {thumb ? (
-        <img src={thumb} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
+        <SmartImage src={thumb} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flex: 'none' }} />
       ) : icon ? (
         <span style={{ display: 'grid', placeItems: 'center', width: 32, height: 32, borderRadius: 6, background: 'var(--tp-surf-2)', color: 'var(--tp-acc)', flex: 'none' }}>
           <Icon name={icon} size={16} />
@@ -48,7 +49,7 @@ export function CommandPaletteRow({
           <Icon name="close" size={14} />
         </button>
       ) : hint ? (
-        <span style={{ fontSize: '11px', fontFamily: 'var(--tp-font-mono)', color: 'var(--tp-mute)', marginLeft: 'auto' }}>{hint}</span>
+        <span style={{ fontSize: '11px', color: 'var(--tp-mute)', fontFamily: 'var(--tp-font-mono)' }}>{hint}</span>
       ) : null}
     </button>
   );

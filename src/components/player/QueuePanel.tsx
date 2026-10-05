@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Icon } from '../Icon';
+import { SmartImage } from '../SmartImage';
 import type { ExternalMedia } from '../../lib/workspaceHooks';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 
@@ -24,44 +25,40 @@ export function QueuePanel({
   useFocusTrap(panelRef, isOpen);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && isOpen) onClose();
     }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="queue-panel-backdrop" role="presentation">
-      <div className="queue-panel" ref={panelRef} role="dialog" aria-modal="true" aria-label="Queue">
-        <div className="queue-panel__header">
-          <strong>Queue</strong>
-          {queue.length > 0 && (
-            <button type="button" className="queue-panel__clear" onClick={onClear}>
-              Clear
+    <div className="queue-overlay" onClick={onClose}>
+      <div
+        className="queue-panel"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Playback Queue"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="queue-panel__header">
+          <h3>Playback Queue</h3>
+          <div className="queue-panel__actions">
+            {queue.length > 0 ? (
+              <button type="button" className="queue-panel__clear" onClick={onClear}>
+                Clear queue
+              </button>
+            ) : null}
+            <button type="button" className="queue-panel__close" aria-label="Close queue" onClick={onClose}>
+              <Icon name="close" size={16} />
             </button>
-          )}
-          <button type="button" className="queue-panel__close" onClick={onClose} aria-label="Close queue">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-        <div className="queue-panel__body">
+          </div>
+        </header>
+
+        <div className="queue-panel__content">
           {queue.length === 0 ? (
             <div className="queue-panel__empty">
               <p>Nothing queued. Play something to start building your queue.</p>
@@ -75,7 +72,7 @@ export function QueuePanel({
                     <span className="queue-item__handle" aria-hidden="true">⠿</span>
                     <button type="button" className="queue-item__main" onClick={() => onSelectIndex(index)}>
                       {item.thumbnailUrl ? (
-                        <img src={item.thumbnailUrl} alt="" loading="lazy" />
+                        <SmartImage src={item.thumbnailUrl} alt="" loading="lazy" />
                       ) : (
                         <span className="queue-item__fallback"><Icon name="headphones" size={13} /></span>
                       )}

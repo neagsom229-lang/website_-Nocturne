@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
+import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { MediaCard as DiscoveryMediaCard } from '../components/MediaCard';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
@@ -70,7 +71,7 @@ function LibraryMediaCard({
     <article className="media-card">
       <button type="button" className="media-card__art" onClick={onPlay} aria-label={`Play ${item.title}`}>
         {item.thumbnailUrl ? (
-          <img src={item.thumbnailUrl} alt="" loading="lazy" />
+          <SmartImage src={item.thumbnailUrl} alt="" loading="lazy" />
         ) : (
           <span className="media-card__fallback"><Icon name={item.type === 'video' ? 'play-circle' : 'headphones'} size={28} /></span>
         )}

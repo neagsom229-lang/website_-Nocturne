@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
+import { SmartImage } from '../SmartImage';
 import type { ExternalMedia } from '../../lib/workspaceHooks';
 
 export type RecommendationItem = {
@@ -66,7 +67,7 @@ export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPla
             title={`Play ${item.title}`}
           >
             {item.thumbnail_url ? (
-              <img src={item.thumbnail_url} alt="" loading="lazy" />
+              <SmartImage src={item.thumbnail_url} alt="" loading="lazy" />
             ) : (
               <span className="idle-recommendation-card__fallback"><Icon name="headphones" size={14} /></span>
             )}
