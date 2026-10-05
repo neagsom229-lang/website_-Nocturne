@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { MediaCard } from '../components/MediaCard';
@@ -62,7 +62,13 @@ const emptyReleases: NewReleases = { movies: [], podcasts: [] };
 function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded: boolean }) {
   const player = useOptionalWorkspacePlayer();
   const navigate = useNavigate();
-  const trending = useSection(getTrending, emptyTrending);
+  const trendingFetchCount = useRef(0);
+  const loadTrending = useCallback(async () => {
+    trendingFetchCount.current += 1;
+    console.log(`[Home] /api/discover/trending fetch count on mount: ${trendingFetchCount.current}`);
+    return getTrending();
+  }, []);
+  const trending = useSection(loadTrending, emptyTrending);
   const releases = useSection(getNewReleases, emptyReleases);
   const playlists = useSection(getCommunityPlaylists, [] as PublicPlaylistCard[]);
   const forYou = useSection(getForYou, emptyTrending, signedIn);
@@ -280,12 +286,9 @@ function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded
           )}
         </section>
       ) : null}
-      <HomeShelf title="Trending Movies" loading={trending.loading} error={trending.error} retry={trending.retry}
-        items={trending.items.movies} renderCard={renderMedia} seeAllHref="/movies" />
-      <HomeShelf title="New Podcasts" loading={releases.loading} error={releases.error} retry={releases.retry}
-        items={releases.items.podcasts} renderCard={renderMedia} seeAllHref="/static" />
-      <HomeShelf title="Fresh Music for You" loading={trending.loading} error={trending.error} retry={trending.retry}
-        items={trending.items.music} renderCard={renderMedia} seeAllHref="/tapes/discover" />
+      <TrendingMovies items={trending.items.movies} loading={trending.loading} error={trending.error} retry={trending.retry} renderCard={renderMedia} />
+      <NewPodcasts items={releases.items.podcasts} loading={releases.loading} error={releases.error} retry={releases.retry} renderCard={renderMedia} />
+      <FreshMusic items={trending.items.music} loading={trending.loading} error={trending.error} retry={trending.retry} renderCard={renderMedia} />
       <HomeShelf title="Community Playlists" loading={playlists.loading} error={playlists.error} retry={playlists.retry}
         items={playlists.items} seeAllHref="/playlists?tab=discover" renderCard={(playlist) => (
           <Link className="discovery-playlist-card" to={`/playlists/${playlist.id}`}>
@@ -300,6 +303,54 @@ function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded
         )} />
     </div>
   );
+}
+
+function TrendingMovies({
+  items,
+  loading,
+  error,
+  retry,
+  renderCard,
+}: {
+  items: DiscoveryMedia[];
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+  renderCard: (item: DiscoveryMedia) => ReactNode;
+}) {
+  return <HomeShelf title="Trending Movies" items={items} renderCard={renderCard} loading={loading} error={error} retry={retry} seeAllHref="/movies" />;
+}
+
+function NewPodcasts({
+  items,
+  loading,
+  error,
+  retry,
+  renderCard,
+}: {
+  items: DiscoveryMedia[];
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+  renderCard: (item: DiscoveryMedia) => ReactNode;
+}) {
+  return <HomeShelf title="New Podcasts" items={items} renderCard={renderCard} loading={loading} error={error} retry={retry} seeAllHref="/static" />;
+}
+
+function FreshMusic({
+  items,
+  loading,
+  error,
+  retry,
+  renderCard,
+}: {
+  items: DiscoveryMedia[];
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+  renderCard: (item: DiscoveryMedia) => ReactNode;
+}) {
+  return <HomeShelf title="Fresh Music for You" items={items} renderCard={renderCard} loading={loading} error={error} retry={retry} seeAllHref="/tapes/discover" />;
 }
 
 function HomeShelf<T>({

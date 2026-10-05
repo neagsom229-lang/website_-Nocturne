@@ -192,8 +192,8 @@ const seedDatingMessages = [
   ['m7', 'p2', 'them', 'respect. what is the fourteenth one for', 'Yesterday'],
 ];
 
-const seed = () => db.transaction((tx) => {
-  tx.prepare('INSERT INTO users (id, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING').run(
+const seed = async () => db.transaction(async (tx) => {
+  await tx.prepare('INSERT INTO users (id, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING').run(
     'guest',
     'Night listener',
   );
@@ -207,34 +207,36 @@ const seed = () => db.transaction((tx) => {
     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`);
 
   for (const [mixOrder, mix] of seedMixes.entries()) {
-    insertMix.run(mix.id, mix.title, mix.note, mix.cover, JSON.stringify(mix.tags), mixOrder);
-    mix.tracks.forEach(([id, title, artist, seconds, cover], index) => {
-      insertTrack.run(id, mix.id, index, title, artist, seconds, cover);
-    });
+    await insertMix.run(mix.id, mix.title, mix.note, mix.cover, JSON.stringify(mix.tags), mixOrder);
+    for (const [index, [id, title, artist, seconds, cover]] of mix.tracks.entries()) {
+      await insertTrack.run(id, mix.id, index, title, artist, seconds, cover);
+    }
   }
 
   const insertShow = tx.prepare(`
     INSERT INTO podcast_shows (id, title, host, blurb, art, cadence, sort_order)
     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`);
-  for (const [sortOrder, show] of seedShows.entries()) insertShow.run(...show, sortOrder);
+  for (const [sortOrder, show] of seedShows.entries()) {
+    await insertShow.run(...show, sortOrder);
+  }
 
   const insertEpisode = tx.prepare(`
     INSERT INTO podcast_episodes
       (id, show_id, title, summary, duration_seconds, published, season, episode_number, audio_url, sort_order)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`);
   for (const [sortOrder, episode] of seedEpisodes.entries()) {
-    insertEpisode.run(...episode, 'https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne', sortOrder);
+    await insertEpisode.run(...episode, 'https://discoveryprovider.audius.co/v1/tracks/95wro/stream?app_name=Nocturne', sortOrder);
   }
 
   const saveEpisode = tx.prepare('INSERT INTO podcast_listen_later (user_id, episode_id) VALUES ($1, $2) ON CONFLICT DO NOTHING');
-  saveEpisode.run('guest', 'e3');
-  saveEpisode.run('guest', 'e5');
+  await saveEpisode.run('guest', 'e3');
+  await saveEpisode.run('guest', 'e5');
 
-  tx.prepare(`
+  await tx.prepare(`
     INSERT INTO podcast_player_states (user_id, episode_id)
     VALUES ($1, $2) ON CONFLICT DO NOTHING`).run('guest', 'e1');
 
-  tx.prepare(`
+  await tx.prepare(`
     INSERT INTO now_playing_states (user_id, mix_id, track_id)
     VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`).run('guest', 'three-am', 't1');
 
@@ -242,7 +244,9 @@ const seed = () => db.transaction((tx) => {
     INSERT INTO journal_entries
       (id, user_id, entry_date, human_date, mood, song, artist, note, photo, rating)
     VALUES ($1, 'guest', $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`);
-  for (const entry of seedJournalEntries) insertJournalEntry.run(...entry);
+  for (const entry of seedJournalEntries) {
+    await insertJournalEntry.run(...entry);
+  }
 
   const insertDatingProfile = tx.prepare(`
     INSERT INTO dating_profiles
@@ -250,19 +254,19 @@ const seed = () => db.transaction((tx) => {
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT DO NOTHING`);
   for (const [sortOrder, profile] of seedDatingProfiles.entries()) {
     const [id, name, age, distance, headline, bio, interests, song, question, answer, photo, lastActive] = profile;
-    insertDatingProfile.run(id, name, age, distance, headline, bio, JSON.stringify(interests), song, question, answer, photo, lastActive, sortOrder);
+    await insertDatingProfile.run(id, name, age, distance, headline, bio, JSON.stringify(interests), song, question, answer, photo, lastActive, sortOrder);
   }
-  tx.prepare(`
+  await tx.prepare(`
     INSERT INTO dating_user_profiles (user_id, name, age, headline, bio, song, interests_json)
     VALUES ('guest', 'You', 27, 'Usually awake when the good songs come on', 'Here for the quiet company and the playlists we can trade.', 'Fairy Lights Left On — Ivy Lorne', '["late walks","one good lamp","sad songs"]') ON CONFLICT DO NOTHING`).run();
-  tx.prepare('INSERT INTO dating_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING').run('guest');
-  tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p1');
-  tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p2');
+  await tx.prepare('INSERT INTO dating_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING').run('guest');
+  await tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p1');
+  await tx.prepare('INSERT INTO dating_matches (user_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING').run('guest', 'p2');
   const insertDatingMessage = tx.prepare(`
     INSERT INTO dating_messages (id, user_id, profile_id, sender, text, sort_order)
     VALUES ($1, 'guest', $2, $3, $4, $5) ON CONFLICT DO NOTHING`);
   for (const [sortOrder, [id, profileId, sender, text]] of seedDatingMessages.entries()) {
-    insertDatingMessage.run(id, profileId, sender, text, sortOrder);
+    await insertDatingMessage.run(id, profileId, sender, text, sortOrder);
   }
 });
 
