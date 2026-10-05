@@ -16,16 +16,20 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: false,
-      proxy: {
-        '/api': {
-          target: `http://127.0.0.1:${port}`,
-          configure: (proxy) => {
-            proxy.on('error', (_err, _req, _res) => {
-              // Suppress connection ECONNREFUSED spam during cold start before backend is listening
-            });
-          },
-        },
-      },
+proxy: {
+  '/api': {
+    target: `http://127.0.0.1:${port}`,
+    changeOrigin: true,
+    configure: (proxy) => {
+      proxy.on('error', (_err, _req, res) => {
+        if (res && !res.headersSent && typeof res.writeHead === 'function') {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'API is starting up' }));
+        }
+      });
+    },
+  },
+},
     },
     build: {
       rollupOptions: {

@@ -3,6 +3,9 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
+
+
+
 import {
   sendWelcomeEmail,
   sendPasswordChangedEmail,

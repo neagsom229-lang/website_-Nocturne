@@ -21,6 +21,7 @@ import { createDiscoverRouter } from './routes/discover.js';
 import { createUsersRouter } from './routes/users.js';
 import { createSocialRouter } from './routes/social.js';
 import { createSearchUnifiedRouter } from './routes/searchUnified.js';
+import { supabaseClient } from './lib/supabaseAdmin.js';
 
 import { createAuthRouter } from './routes/authSupabase.js';
 
@@ -36,6 +37,17 @@ console.info(`[env] TMDB_API_KEY: ${process.env.TMDB_API_KEY ? 'configured' : 'M
 console.info(`[env] YOUTUBE_API_KEY: ${process.env.YOUTUBE_API_KEY ? 'configured' : 'MISSING'}`);
 console.info(`[env] SUPABASE_URL: ${process.env.SUPABASE_URL ? 'configured' : 'MISSING'}`);
 console.info(`[env] SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'configured' : 'MISSING'}`);
+
+const unifiedSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many searches. Please slow down a little.' },
+});
+
+app.use('/api/search', unifiedSearchLimiter, createSearchUnifiedRouter({ database: db }));
+
 
 const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173')
   .split(',')
@@ -1062,7 +1074,10 @@ app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({ error: 'Request body must be valid JSON' });
   }
-  return res.status(500).json({ error: 'internal_error', message: err.message });
+ return res.status(500).json({
+  error: 'internal_error',
+  ...(process.env.NODE_ENV !== 'production' && { message: err.message }),
+});
 });
 
 await initializeDatabase();
@@ -1087,3 +1102,4 @@ server.on('listening', () => {
   const activePort = server.address()?.port ?? port;
   console.log(`BEDROOM POP server listening on http://${host}:${activePort}`);
 });
+
