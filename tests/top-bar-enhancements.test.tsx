@@ -1,10 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
-  authUser: { id: 'user-1', displayName: 'June', email: 'june@example.com' } as any,
+  authUser: { id: 'user-1', displayName: 'June', email: 'june@example.com' } as { id: string; displayName: string; email: string },
   signOut: vi.fn(),
 }));
 

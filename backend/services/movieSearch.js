@@ -1,5 +1,3 @@
-import { providerFetch } from '../lib/providerFetch.js';
-
 const TMDB_API = 'https://api.themoviedb.org/3';
 
 export class MovieSearchError extends Error {
@@ -56,7 +54,7 @@ async function requestTmdb(path, params = {}, cacheKey) {
         console.warn(`[tmdb] fallback to cache for ${cacheKey}`);
         return { results: cachedPayload, degraded: true, reason: 'tmdb_unavailable_cached' };
       }
-    } catch (e) {}
+    } catch {}
   }
 
   return { results: [], degraded: true, reason: 'tmdb_unavailable' };

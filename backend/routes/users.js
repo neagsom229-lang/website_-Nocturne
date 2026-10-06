@@ -2,13 +2,6 @@ import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { sendAccountDeletedEmail } from '../lib/emailService.js';
 
-const MAX_PAGE_SIZE = 50;
-
-function validPage(value, fallback, maximum = MAX_PAGE_SIZE) {
-  const page = value === undefined ? fallback : Number(value);
-  return Number.isInteger(page) && page >= 0 && page <= maximum ? page : null;
-}
-
 async function findProfile(database, userId, viewerId) {
   return database.prepare(`
     SELECT u.id, u.display_name AS "displayName", u.avatar_url AS "avatarUrl",

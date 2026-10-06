@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { db } from '../db.js';
-import { recordCacheWriteFailure } from '../services/cacheMetrics.js';
 import {
   getMovieDetails,
   getMovieVideos,
@@ -10,7 +9,6 @@ import {
   getTrendingMovies,
   getUpcomingMovies,
   getNowPlayingMovies,
-  MovieSearchError,
   normalizeMovie,
   normalizeMovieDetails,
   searchMovies,

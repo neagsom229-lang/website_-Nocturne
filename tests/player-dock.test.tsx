@@ -1,14 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 import { useQueue } from '../src/lib/useQueue';
 import { useSleepTimer } from '../src/lib/useSleepTimer';
 import { usePlaybackModes } from '../src/lib/usePlaybackModes';
 import { QueueButton } from '../src/components/player/QueueButton';
-import { SleepTimer } from '../src/components/player/SleepTimer';
-import { IdleRecommendations } from '../src/components/player/IdleRecommendations';
 
 afterEach(() => {
   cleanup();

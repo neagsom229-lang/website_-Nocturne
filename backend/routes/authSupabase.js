@@ -9,8 +9,6 @@ import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
 import {
   sendWelcomeEmail,
   sendPasswordChangedEmail,
-  sendNewDeviceEmail,
-  sendAccountDeletedEmail,
   checkAndSendNewDeviceEmail,
 } from '../lib/emailService.js';
 

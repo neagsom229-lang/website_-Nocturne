@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Icon } from './Icon';
+import { Icon, type IconName } from './Icon';
 import { getStoredNotifications, markAllNotificationsRead, markNotificationRead, type NotificationItem } from '../lib/notifications';
 import { useFocusTrap } from '../lib/useFocusTrap';
 
@@ -81,7 +81,7 @@ export function NotificationPanel({ isOpen, onClose }: { isOpen: boolean; onClos
                   onClick={() => handleItemClick(item.id)}
                 >
                   <span className="notification-item__icon">
-                    <Icon name={(item.icon as any) || 'bell'} size={15} />
+                    <Icon name={(item.icon as IconName) || 'bell'} size={15} />
                   </span>
                   <div className="notification-item__content">
                     <div className="notification-item__title-row">

@@ -27,7 +27,7 @@ class DiscoveryTestDatabase {
         if (sql.includes('COUNT(*)::int AS count FROM media_library')) return { count: this.savedCount };
         return null;
       },
-      all: async (userId) => {
+      all: async (_userId) => {
         if (sql.includes('GROUP BY COALESCE(media_type, type)')) return this.counts;
         if (sql.includes('GROUP BY artist')) return this.artists;
         if (sql.includes('GROUP BY mg.genre_id')) return this.genres;

@@ -1,13 +1,8 @@
 import 'dotenv/config';
-import express from 'express';
-import { db } from '../db.js';
-import { getTrendingMovies, normalizeMovie } from '../services/movieSearch.js';
-import { getRandomTrack } from '../services/audiusSearch.js';
 import { searchTvShows } from '../services/tvSearch.js';
 import { searchYouTubeVideos } from '../services/youtubeSearch.js';
 import { searchAudiobooks } from '../services/librivoxSearch.js';
 import { searchDeezerMusic } from '../services/deezerSearch.js';
-import { createDiscoverRouter } from '../routes/discover.js';
 
 async function diagnose() {
   console.log('--- DIAGNOSTIC: FULL PROVIDER COVERAGE ---');
@@ -38,17 +33,16 @@ async function diagnose() {
 
   // 4. Deezer check
   try {
-    const dz = await searchDeezerMusic('daft punk');
+    const dz = await searchDeezerMusic('chillwave');
     console.info('[diag] deezer:', { count: dz.length, first: dz[0]?.title });
   } catch (error) {
     console.error('Deezer Search Check Failed:', error.message);
   }
 
   console.log('--- DIAGNOSTIC COMPLETE ---');
-  process.exit(0);
 }
 
 diagnose().catch((err) => {
-  console.error('Diagnostic crashed:', err);
+  console.error('Diagnostic error:', err);
   process.exit(1);
 });

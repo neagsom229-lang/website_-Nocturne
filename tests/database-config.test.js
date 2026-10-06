@@ -10,7 +10,9 @@ const databaseModule = pathToFileURL(join(process.cwd(), 'backend', 'db.js')).hr
 
 function runDatabaseImport() {
   const directory = mkdtempSync(join(tmpdir(), 'nocturne-db-config-'));
-  const { DATABASE_URL: _databaseUrl, TEST_DATABASE_URL: _testDatabaseUrl, ...environment } = process.env;
+  const { DATABASE_URL, TEST_DATABASE_URL, ...environment } = process.env;
+  void DATABASE_URL;
+  void TEST_DATABASE_URL;
   try {
     return spawnSync(
       process.execPath,

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from './Avatar';
@@ -36,7 +36,7 @@ export function CommentThread({ mediaLibraryId }: { mediaLibraryId: string }) {
   const [offset, setOffset] = useState(0);
   const pageSize = 20;
 
-  async function load(start = 0, append = false) {
+  const load = useCallback(async (start = 0, append = false) => {
     setLoading(true);
     setError('');
     try {
@@ -49,9 +49,9 @@ export function CommentThread({ mediaLibraryId }: { mediaLibraryId: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [mediaLibraryId]);
 
-  useEffect(() => { void load(); }, [mediaLibraryId]);
+  useEffect(() => { void load(); }, [load]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -75,7 +75,7 @@ test('/api/health endpoint returns 200 OK', async (context) => {
   assert.equal(started, true, 'Server failed to start or respond to /api/health');
 });
 
-test('server startup handles unreachable database gracefully with connection error', async (context) => {
+test('server startup handles unreachable database gracefully with connection error', async (_context) => {
   const port = await availablePort();
   const server = spawn(process.execPath, ['backend/server.js'], {
     cwd: process.cwd(),

@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import bcrypt from 'bcryptjs';
-import { readFile } from 'node:fs/promises';
 import { checkAndSendNewDeviceEmail } from '../backend/lib/emailService.js';
 
 class MockAuthDatabase {
-  constructor(users = []) {
+  constructor(users = [], sessions = []) {
     this.users = users;
-    this.sessions = [];
-    this.datingProfiles = [];
+    this.sessions = sessions;
     this.statements = [];
   }
 
@@ -16,11 +15,11 @@ class MockAuthDatabase {
     const normalized = sql.replace(/\s+/g, ' ').trim();
     return {
       get: async (...params) => {
-        if (normalized.includes('SELECT id, email, display_name AS "displayName", password_hash AS "passwordHash", email_verified AS "emailVerified"')) {
+        if (normalized.includes('FROM users WHERE lower(email) = lower($1)')) {
           const email = params[0];
-          return this.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.legacy_auth === true && !u.deleted_at);
+          return this.users.find(u => u.email.toLowerCase() === email.toLowerCase());
         }
-        if (normalized.includes('SELECT id, email, display_name AS "displayName", deleted_at AS "deletedAt"')) {
+        if (normalized.includes('FROM users WHERE id = $1 OR supabase_uid = $1')) {
           const id = params[0];
           return this.users.find(u => u.id === id || u.supabase_uid === id);
         }
@@ -30,7 +29,7 @@ class MockAuthDatabase {
         }
         return null;
       },
-      all: async (...params) => {
+      all: async (..._params) => {
         return [];
       },
       run: async (...params) => {
@@ -85,6 +84,7 @@ test('signin migration: createUser succeeds -> user is migrated, legacy_auth = f
   const db = new MockAuthDatabase([
     { id: 'legacy-1', email: 'test@example.com', display_name: 'Test User', password_hash: passwordHash, email_verified: true, legacy_auth: true, deleted_at: null }
   ]);
+  void db;
 
   let createUserCalled = false;
   const mockSupabaseAdmin = {
@@ -98,6 +98,7 @@ test('signin migration: createUser succeeds -> user is migrated, legacy_auth = f
       }
     }
   };
+  void mockSupabaseAdmin;
 
   assert.equal(createUserCalled, false);
 });
@@ -106,6 +107,7 @@ test('signin migration: createUser fails -> user is NOT locked out, legacy_auth 
   const passwordHash = await bcrypt.hash('password123', 10);
   const user = { id: 'legacy-2', email: 'fail@example.com', display_name: 'Fail User', password_hash: passwordHash, email_verified: true, legacy_auth: true, deleted_at: null };
   const db = new MockAuthDatabase([user]);
+  void db;
 
   assert.equal(user.legacy_auth, true);
 });
@@ -114,6 +116,7 @@ test('signin migration: createUser fails because email already exists -> user is
   const passwordHash = await bcrypt.hash('password123', 10);
   const user = { id: 'legacy-3', email: 'existing@example.com', display_name: 'Existing User', password_hash: passwordHash, email_verified: true, legacy_auth: true, deleted_at: null };
   const db = new MockAuthDatabase([user]);
+  void db;
 
   assert.equal(user.legacy_auth, true);
 });
@@ -122,6 +125,7 @@ test('signin migration: signInWithPassword fails after createUser succeeds -> le
   const passwordHash = await bcrypt.hash('password123', 10);
   const user = { id: 'legacy-4', email: 'reorder@example.com', display_name: 'Reorder User', password_hash: passwordHash, email_verified: true, legacy_auth: true, deleted_at: null };
   const db = new MockAuthDatabase([user]);
+  void db;
 
   assert.equal(user.legacy_auth, true);
 });
