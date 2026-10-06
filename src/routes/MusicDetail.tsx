@@ -6,7 +6,7 @@ import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
-import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import { fetchMediaLibrary, saveMedia } from '../lib/mediaApi';
 import type { DiscoveryMedia } from '../types';
 
 export function MusicDetail() {
@@ -42,7 +42,7 @@ export function MusicDetail() {
       .then((items) => {
         if (!active) return;
         const existing = items.find((i) => i.externalId === id);
-        if (existing) {
+        if (existing?.id) {
           setSaved(true);
           setMediaLibraryId(existing.id);
         }
@@ -56,9 +56,19 @@ export function MusicDetail() {
     if (!track) return;
     setSaving(true);
     try {
-      const res = await saveDiscoveryMedia(track);
+      const res = await saveMedia({
+        type: 'audio',
+        provider: track.source,
+        externalId: track.id,
+        title: track.title,
+        artist: track.artist ?? null,
+        thumbnailUrl: track.thumbnail_url ?? null,
+        streamUrl: track.stream_url ?? '',
+        externalUrl: track.external_url ?? null,
+        mediaType: 'music',
+      });
       setSaved(true);
-      setMediaLibraryId(res.item.id);
+      if (res.item.id) setMediaLibraryId(res.item.id);
     } catch (saveErr: unknown) {
       setError((saveErr as Error).message);
     } finally {
@@ -89,7 +99,7 @@ export function MusicDetail() {
     <article className="media-detail-page">
       <div className="media-detail-page__hero">
         <div className="media-detail-page__cover">
-          <SmartImage src={track.thumbnailUrl} alt={track.title} />
+          <SmartImage src={track.thumbnail_url ?? undefined} alt={track.title} />
         </div>
         <div className="media-detail-page__info">
           <span className="badge badge--pill">Music</span>
@@ -101,13 +111,13 @@ export function MusicDetail() {
               className="btn btn--primary"
               onClick={() => playExternalMedia({
                 type: 'audio',
-                provider: track.provider,
-                externalId: track.externalId,
+                provider: track.source,
+                externalId: track.id,
                 title: track.title,
-                artist: track.artist,
-                thumbnailUrl: track.thumbnailUrl,
-                streamUrl: track.streamUrl,
-                externalUrl: track.externalUrl,
+                artist: track.artist ?? null,
+                thumbnailUrl: track.thumbnail_url ?? null,
+                streamUrl: track.stream_url ?? '',
+                externalUrl: track.external_url ?? null,
               })}
             >
               <Icon name="play" size={16} /> Listen Now

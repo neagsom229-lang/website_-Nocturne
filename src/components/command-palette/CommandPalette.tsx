@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Icon } from '../Icon';
 import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { useRecentSearches } from '../../lib/useRecentSearches';
+import type { DiscoveryMedia } from '../../types';
 import { searchSuggest, type SuggestionItem } from '../../lib/mediaApi';
 import { useWorkspacePlayer } from '../../lib/workspaceHooks';
 import { QuickActions } from './QuickActions';
@@ -91,30 +92,32 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
         return;
       }
     } else if (type === 'recent') {
-      addRecent(value);
-      navigate(`/search?q=${encodeURIComponent(value)}`);
+      const q = value as string;
+      addRecent(q);
+      navigate(`/search?q=${encodeURIComponent(q)}`);
     } else if (type === 'suggestion') {
-      addRecent(value.title);
-      switch (value.media_type) {
+      const item = value as DiscoveryMedia;
+      addRecent(item.title);
+      switch (item.media_type) {
         case 'music':
           playExternalMedia({
             type: 'audio',
-            provider: value.source || 'audius',
-            externalId: value.id,
-            title: value.title,
-            artist: value.subtitle || value.artist || null,
-            thumbnailUrl: value.thumbnail_url,
-            streamUrl: value.stream_url || '',
-            externalUrl: value.external_url || null,
+            provider: item.source || 'audius',
+            externalId: item.id,
+            title: item.title,
+            artist: item.artist || null,
+            thumbnailUrl: item.thumbnail_url,
+            streamUrl: item.stream_url || '',
+            externalUrl: item.external_url || null,
           });
           break;
-        case 'movie':         navigate(`/movies/${encodeURIComponent(value.id)}`); break;
-        case 'tv':            navigate(`/tv/${encodeURIComponent(value.id)}`); break;
-        case 'podcast':       navigate(`/podcasts/${encodeURIComponent(value.id)}`); break;
-        case 'audiobook':     navigate(`/audiobooks/${encodeURIComponent(value.id)}`); break;
-        case 'video_podcast': navigate(`/video-podcasts/${encodeURIComponent(value.id)}`); break;
+        case 'movie':         navigate(`/movies/${encodeURIComponent(item.id)}`); break;
+        case 'tv':            navigate(`/tv/${encodeURIComponent(item.id)}`); break;
+        case 'podcast':       navigate(`/podcasts/${encodeURIComponent(item.id)}`); break;
+        case 'audiobook':     navigate(`/audiobooks/${encodeURIComponent(item.id)}`); break;
+        case 'video_podcast': navigate(`/video-podcasts/${encodeURIComponent(item.id)}`); break;
         default:
-          navigate(`/search?q=${encodeURIComponent(value.title)}`);
+          navigate(`/search?q=${encodeURIComponent(item.title)}`);
       }
     }
     onClose();

@@ -6,7 +6,7 @@ import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
-import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import { fetchMediaLibrary, saveMedia } from '../lib/mediaApi';
 import type { DiscoveryMedia } from '../types';
 
 export function AudiobookDetail() {
@@ -42,7 +42,7 @@ export function AudiobookDetail() {
       .then((items) => {
         if (!active) return;
         const existing = items.find((i) => i.externalId === id);
-        if (existing) {
+        if (existing?.id) {
           setSaved(true);
           setMediaLibraryId(existing.id);
         }
@@ -56,9 +56,19 @@ export function AudiobookDetail() {
     if (!book) return;
     setSaving(true);
     try {
-      const res = await saveDiscoveryMedia(book);
+      const res = await saveMedia({
+        type: 'audio',
+        provider: book.source,
+        externalId: book.id,
+        title: book.title,
+        artist: book.artist ?? null,
+        thumbnailUrl: book.thumbnail_url ?? null,
+        streamUrl: book.stream_url ?? '',
+        externalUrl: book.external_url ?? null,
+        mediaType: 'audiobook',
+      });
       setSaved(true);
-      setMediaLibraryId(res.item.id);
+      if (res.item.id) setMediaLibraryId(res.item.id);
     } catch (saveErr: unknown) {
       setError((saveErr as Error).message);
     } finally {
@@ -89,7 +99,7 @@ export function AudiobookDetail() {
     <article className="media-detail-page">
       <div className="media-detail-page__hero">
         <div className="media-detail-page__cover">
-          <SmartImage src={book.thumbnailUrl} alt={book.title} />
+          <SmartImage src={book.thumbnail_url ?? undefined} alt={book.title} />
         </div>
         <div className="media-detail-page__info">
           <span className="badge badge--pill">Audiobook</span>
@@ -101,13 +111,13 @@ export function AudiobookDetail() {
               className="btn btn--primary"
               onClick={() => playExternalMedia({
                 type: 'audio',
-                provider: book.provider,
-                externalId: book.externalId,
+                provider: book.source,
+                externalId: book.id,
                 title: book.title,
-                artist: book.artist,
-                thumbnailUrl: book.thumbnailUrl,
-                streamUrl: book.streamUrl,
-                externalUrl: book.externalUrl,
+                artist: book.artist ?? null,
+                thumbnailUrl: book.thumbnail_url ?? null,
+                streamUrl: book.stream_url ?? '',
+                externalUrl: book.external_url ?? null,
               })}
             >
               <Icon name="play" size={16} /> Listen Now

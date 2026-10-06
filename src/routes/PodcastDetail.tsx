@@ -6,7 +6,7 @@ import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
-import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import { fetchMediaLibrary, saveMedia } from '../lib/mediaApi';
 import type { DiscoveryMedia } from '../types';
 
 export function PodcastDetail() {
@@ -42,7 +42,7 @@ export function PodcastDetail() {
       .then((items) => {
         if (!active) return;
         const existing = items.find((i) => i.externalId === id);
-        if (existing) {
+        if (existing?.id) {
           setSaved(true);
           setMediaLibraryId(existing.id);
         }
@@ -56,9 +56,19 @@ export function PodcastDetail() {
     if (!podcast) return;
     setSaving(true);
     try {
-      const res = await saveDiscoveryMedia(podcast);
+      const res = await saveMedia({
+        type: 'podcast',
+        provider: podcast.source,
+        externalId: podcast.id,
+        title: podcast.title,
+        artist: podcast.artist ?? null,
+        thumbnailUrl: podcast.thumbnail_url ?? null,
+        streamUrl: podcast.stream_url ?? '',
+        externalUrl: podcast.external_url ?? null,
+        mediaType: 'podcast',
+      });
       setSaved(true);
-      setMediaLibraryId(res.item.id);
+      if (res.item.id) setMediaLibraryId(res.item.id);
     } catch (saveErr: unknown) {
       setError((saveErr as Error).message);
     } finally {
@@ -89,7 +99,7 @@ export function PodcastDetail() {
     <article className="media-detail-page">
       <div className="media-detail-page__hero">
         <div className="media-detail-page__cover">
-          <SmartImage src={podcast.thumbnailUrl} alt={podcast.title} />
+          <SmartImage src={podcast.thumbnail_url ?? undefined} alt={podcast.title} />
         </div>
         <div className="media-detail-page__info">
           <span className="badge badge--pill">Podcast</span>
@@ -101,13 +111,13 @@ export function PodcastDetail() {
               className="btn btn--primary"
               onClick={() => playExternalMedia({
                 type: 'podcast',
-                provider: podcast.provider,
-                externalId: podcast.externalId,
+                provider: podcast.source,
+                externalId: podcast.id,
                 title: podcast.title,
-                artist: podcast.artist,
-                thumbnailUrl: podcast.thumbnailUrl,
-                streamUrl: podcast.streamUrl,
-                externalUrl: podcast.externalUrl,
+                artist: podcast.artist ?? null,
+                thumbnailUrl: podcast.thumbnail_url ?? null,
+                streamUrl: podcast.stream_url ?? '',
+                externalUrl: podcast.external_url ?? null,
               })}
             >
               <Icon name="play" size={16} /> Play Episode

@@ -2,12 +2,28 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
+type SessionItem = {
+  id: string | number;
+  device?: string;
+  isCurrent?: boolean;
+  ip?: string;
+  lastUsedAt?: string;
+};
+
+type ActivityItem = {
+  id: string | number;
+  eventType?: string;
+  ip?: string;
+  userAgent?: string;
+  createdAt?: string;
+};
+
 export function SettingsSecurity() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const [sessions, setSessions] = useState<Array<Record<string, unknown>>>([]);
-  const [activity, setActivity] = useState<Array<Record<string, unknown>>>([]);
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
 
   // Change password state
@@ -231,7 +247,7 @@ export function SettingsSecurity() {
                     {s.device}
                     {s.isCurrent && <span className="badge" style={{ background: 'var(--tp-acc)', color: '#fff', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px' }}>This device</span>}
                   </div>
-                  <div className="t-small t-mute" style={{ marginTop: '4px' }}>IP: {s.ip} • Last active: {new Date(s.lastUsedAt).toLocaleString()}</div>
+                  <div className="t-small t-mute" style={{ marginTop: '4px' }}>IP: {s.ip} • Last active: {new Date(s.lastUsedAt ?? Date.now()).toLocaleString()}</div>
                 </div>
               </div>
             ))}
@@ -249,10 +265,10 @@ export function SettingsSecurity() {
             {activity.map((ev) => (
               <div key={ev.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--tp-surf)', borderRadius: 'var(--tp-r-sm)', fontSize: '0.9rem' }}>
                 <div>
-                  <strong style={{ textTransform: 'capitalize' }}>{ev.eventType.replaceAll('_', ' ')}</strong>
+                  <strong style={{ textTransform: 'capitalize' }}>{(ev.eventType ?? '').replaceAll('_', ' ')}</strong>
                   <div className="t-small t-mute">{ev.ip || 'Unknown IP'} • {ev.userAgent ? ev.userAgent.substring(0, 40) : 'Browser'}</div>
                 </div>
-                <div className="t-small t-mute">{new Date(ev.createdAt).toLocaleString()}</div>
+                <div className="t-small t-mute">{new Date(ev.createdAt ?? Date.now()).toLocaleString()}</div>
               </div>
             ))}
           </div>

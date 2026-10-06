@@ -6,7 +6,7 @@ import { SmartImage } from '../components/SmartImage';
 import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
-import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import { fetchMediaLibrary, saveMedia } from '../lib/mediaApi';
 
 export function TvDetail() {
   const { id = '' } = useParams();
@@ -58,7 +58,7 @@ export function TvDetail() {
     if (!show) return;
     setSaving(true);
     try {
-      const res = await saveDiscoveryMedia({
+      const res = await saveMedia({
         type: 'video',
         provider: 'tmdb',
         externalId: String(show.id ?? id),
@@ -67,9 +67,10 @@ export function TvDetail() {
         thumbnailUrl: String(show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : ''),
         streamUrl: String(show.trailer_url ?? ''),
         externalUrl: String(show.homepage ?? ''),
+        mediaType: 'tv',
       });
       setSaved(true);
-      setMediaLibraryId(res.item.id);
+      if (res.item.id) setMediaLibraryId(res.item.id);
     } catch (saveErr: unknown) {
       setError((saveErr as Error).message);
     } finally {
@@ -113,12 +114,14 @@ export function TvDetail() {
                 className="btn btn--primary"
                 onClick={() => playExternalMedia({
                   type: 'video',
+                  mediaType: 'tv',
                   provider: 'tmdb',
                   externalId: String(show.id ?? id),
                   title: String(show.title ?? show.name ?? ''),
                   artist: String(show.tagline ?? ''),
                   thumbnailUrl: String(show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : ''),
                   streamUrl: String(show.trailer_url),
+                  externalUrl: String(show.homepage ?? ''),
                 })}
               >
                 <Icon name="play" size={16} /> Watch Trailer

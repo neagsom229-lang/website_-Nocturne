@@ -373,7 +373,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       const history = JSON.parse(localStorage.getItem('nocturne_play_history') || '[]') as Array<{ id: string }>;
       const next = [item, ...history.filter((i) => i.id !== item.id)].slice(0, 5);
       localStorage.setItem('nocturne_play_history', JSON.stringify(next));
-      setRecentlyPlayed(next);
+      setRecentlyPlayed(next as Array<{ id: string; title: string; artist?: string }>);
     } catch {}
   }
 
