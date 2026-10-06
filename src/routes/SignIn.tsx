@@ -1,31 +1,33 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { useAuth } from '../auth/AuthContext';
 
 export function SignIn() {
   const { signInWithEmail, signInWithGoogle, signInWithFacebook, resendVerificationEmail } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const destination = searchParams.get('redirect') || searchParams.get('from') || '/tapes';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [magicSent, setMagicSent] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
-  const destination = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/';
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
       await signInWithEmail(email, password);
       navigate(destination, { replace: true });
-    } catch (err: any) {
-      const code = err?.code || (err?.message?.includes('verify') ? 'email_not_verified' : 'invalid_credentials');
-      const message = err?.message || 'That didn’t work. Please check your email and password.';
+    } catch (err: unknown) {
+      const errorObj = err as Error & { code?: string; message?: string };
+      const code = errorObj?.code || (errorObj?.message?.includes('verify') ? 'email_not_verified' : 'invalid_credentials');
+      const message = errorObj?.message || 'That didn’t work. Please check your email and password.';
       setError({ message, code });
     } finally {
       setSubmitting(false);
@@ -50,8 +52,8 @@ export function SignIn() {
         throw new Error(data.error || 'Could not send magic link');
       }
       setMagicSent(true);
-    } catch (err: any) {
-      setError({ message: err?.message || 'Could not send magic link' });
+    } catch (err: unknown) {
+      setError({ message: (err as Error)?.message || 'Could not send magic link' });
     } finally {
       setSubmitting(false);
     }
@@ -63,8 +65,8 @@ export function SignIn() {
     try {
       await resendVerificationEmail(email);
       setResendSuccess(true);
-    } catch (err: any) {
-      setError({ message: err?.message || 'Could not resend verification email.' });
+    } catch (err: unknown) {
+      setError({ message: (err as Error)?.message || 'Could not resend verification email.' });
     } finally {
       setResending(false);
     }
@@ -75,35 +77,31 @@ export function SignIn() {
       <main className="auth-page">
         <div className="tp-fx auth-page__fx" aria-hidden="true" />
         <Link to="/" className="nav__logo auth-brand"><span className="dot dot--live" aria-hidden="true" /> BEDROOM POP</Link>
-        <section className="auth-card" aria-labelledby="verify-title">
+        <section className="auth-card" aria-labelledby="verify-prompt-title">
           <span className="auth-card__lamp" aria-hidden="true">✳</span>
-          <p className="t-eyebrow">ONE MORE STEP IN THE DARK</p>
-          <h1 id="verify-title" className="t-h1">Verify your email.</h1>
-          <p className="t-small t-mute">
-            Please check your inbox ({email}) to verify your email address before stepping into your room.
+          <h1 id="verify-prompt-title" className="t-h1">Verify your email</h1>
+          <p className="t-small t-mute" style={{ marginBottom: '16px' }}>
+            Your account exists, but your email hasn't been verified yet. Check your inbox or resend the verification link.
           </p>
           {resendSuccess ? (
-            <p className="auth-form__error" style={{ background: 'color-mix(in srgb, #639f75 12%, var(--tp-surf))', borderColor: 'color-mix(in srgb, #639f75 45%, var(--tp-line))' }}>
-              Verification email resent! Check your inbox.
-            </p>
+            <p className="t-small" style={{ color: '#639f75', marginBottom: '16px' }}>Verification email resent successfully!</p>
           ) : null}
-          <div className="auth-form" style={{ gap: '10px' }}>
+          <div style={{ display: 'grid', gap: '10px' }}>
             <button
               type="button"
               className="btn btn--primary auth-form__submit"
               onClick={() => void handleResendVerification()}
               disabled={resending}
             >
-              {resending ? 'Sending verification link…' : 'Resend verification email'}
-              <Icon name="arrow-right" size={16} />
+              {resending ? 'Sending…' : 'Resend verification email'}
             </button>
             <button
               type="button"
               className="btn"
-              style={{ minHeight: '40px', background: 'transparent', border: '1px solid var(--tp-line)', color: 'var(--tp-ink)' }}
+              style={{ background: 'none', border: 'none', color: 'var(--tp-acc)', cursor: 'pointer' }}
               onClick={() => setError(null)}
             >
-              Try another account
+              ← Back to sign in
             </button>
           </div>
         </section>
@@ -115,93 +113,76 @@ export function SignIn() {
     <main className="auth-page">
       <div className="tp-fx auth-page__fx" aria-hidden="true" />
       <Link to="/" className="nav__logo auth-brand"><span className="dot dot--live" aria-hidden="true" /> BEDROOM POP</Link>
-      <section className="auth-card" aria-labelledby="auth-title">
+      <section className="auth-card" aria-labelledby="signin-title">
         <span className="auth-card__lamp" aria-hidden="true">✳</span>
-        <p className="t-eyebrow">THE LIGHT WAS LEFT ON</p>
-        <h1 id="auth-title" className="t-h1">Come on in.</h1>
-        <p className="t-small t-mute">Your listening room is right where you left it.</p>
+        <h1 id="signin-title" className="t-h1">Welcome back</h1>
+        <p className="t-small t-mute">Step into your room. The night is long.</p>
 
-        {magicSent ? (
-          <div className="auth-form">
-            <p className="t-small" style={{ color: '#639f75' }}>Magic link sent to {email}. Check your inbox to sign in instantly.</p>
-            <button type="button" className="btn btn--primary auth-form__submit" onClick={() => setMagicSent(false)}>
-              Back to sign in
-            </button>
+        {error && <p className="auth-form__error" role="alert">{error.message}</p>}
+        {magicSent && <p className="t-small" role="status" style={{ color: '#639f75', margin: '8px 0' }}>Magic link sent! Check your email.</p>}
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="email">Email</label>
+            <input
+              id="email"
+              type="email"
+              required
+              className="input auth-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
           </div>
-        ) : (
-          <form className="auth-form" onSubmit={(e) => void onSubmit(e)}>
-            <label className="diary-field">
-              <span>Email</span>
-              <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@somewhere.com" />
-            </label>
-            <label className="diary-field">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Password</span>
-                <Link to="/auth/forgot-password" style={{ color: 'var(--tp-acc)', fontSize: '11px', textDecoration: 'none' }}>
-                  Forgot password?
-                </Link>
-              </div>
-              <input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" />
-            </label>
-            {error ? <p className="auth-form__error" role="alert">{error.message}</p> : null}
-            <button type="submit" className="btn btn--primary auth-form__submit" disabled={submitting}>
-              {submitting ? 'One second…' : 'Sign in'}
-              <Icon name="arrow-right" size={16} />
-            </button>
-
+          <div className="auth-field">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label className="auth-label" htmlFor="password">Password</label>
+              <Link to="/auth/forgot-password" className="t-small" style={{ color: 'var(--tp-acc)', textDecoration: 'none' }}>Forgot?</Link>
+            </div>
+            <input
+              id="password"
+              type="password"
+              required
+              className="input auth-input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••••••"
+            />
+          </div>
+          <button type="submit" className="btn btn--primary auth-form__submit" disabled={submitting}>
+            {submitting ? 'Stepping inside…' : 'Sign in'}
+            <Icon name="arrow-right" size={16} />
+          </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
             <button
               type="button"
-              className="btn"
-              style={{ background: 'transparent', border: '1px dashed var(--tp-acc)', color: 'var(--tp-acc)', minHeight: '38px', fontSize: '12px' }}
+              className="btn btn--secondary"
+              style={{ flex: 1, fontSize: '13px' }}
               onClick={() => void handleMagicLink()}
               disabled={submitting}
             >
-              Email me a magic link
+              Send Magic Link
             </button>
+          </div>
+        </form>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '4px 0', color: 'var(--tp-mute)', fontSize: '11px' }}>
-              <div style={{ flex: 1, height: '1px', background: 'var(--tp-line)' }} />
-              <span>or continue with</span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--tp-line)' }} />
-            </div>
+        <div className="auth-divider"><span>or continue with</span></div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                className="btn"
-                style={{ background: '#ffffff', color: '#1f1f1f', border: '1px solid var(--tp-line)', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
-                onClick={() => void signInWithGoogle()}
-              >
-                Google
-              </button>
-              <button
-                type="button"
-                className="btn"
-                style={{ background: '#1877F2', color: '#ffffff', border: 'none', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
-                onClick={() => void signInWithFacebook()}
-              >
-                Facebook
-              </button>
-              <button
-                type="button"
-                className="btn"
-                style={{ background: '#000000', color: '#ffffff', border: 'none', minHeight: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: 500 }}
-                onClick={() => alert('Apple sign-in requires Apple Developer configuration')}
-              >
-                Apple
-              </button>
-            </div>
-            <p className="auth-form__privacy">Your password is stored securely. We never put it in the light.</p>
-          </form>
-        )}
+        <div className="auth-providers">
+          <button type="button" className="btn btn--provider" onClick={() => void signInWithGoogle()}>
+            <Icon name="star" size={16} /> Google
+          </button>
+          <button type="button" className="btn btn--provider" onClick={() => void signInWithFacebook()}>
+            <Icon name="heart" size={16} /> Facebook
+          </button>
+        </div>
 
-        <p className="auth-card__switch">
-          Don’t have an account?{' '}
-          <Link to="/auth/register">Sign up</Link>
-        </p>
-        <Link to="/landing" className="auth-card__public">Or just look around <Icon name="arrow-right" size={14} /></Link>
+        <div className="auth-footer" style={{ marginTop: '20px', textAlign: 'center' }}>
+          <p className="t-small t-mute">
+            Don't have a room yet? <Link to="/auth/signup" style={{ color: 'var(--tp-acc)', textDecoration: 'none' }}>Create one</Link>
+          </p>
+        </div>
       </section>
-      <p className="auth-page__note t-small t-mute">No rush. The night is long.</p>
     </main>
   );
 }

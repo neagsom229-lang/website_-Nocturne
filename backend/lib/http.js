@@ -4,7 +4,7 @@ const circuitBreakers = new Map(); // provider -> { failures: number, resetAt: n
 const CIRCUIT_THRESHOLD = 3;
 const CIRCUIT_COOLDOWN_MS = 60_000;
 
-export async function fetchWithResilience(url, options = {}, providerName = 'default') {
+export async function fetchWithResilience(url, options = {}, providerName = 'default', fetchImpl = fetch) {
   const breaker = circuitBreakers.get(providerName) ?? { failures: 0, resetAt: 0 };
   const now = Date.now();
 
@@ -13,7 +13,6 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
       logger.debug(`[circuit-breaker] Circuit open for ${providerName}, skipping live call`, { providerName });
       throw new Error(`Circuit open for ${providerName}`);
     } else {
-      // Reset breaker after cooldown
       breaker.failures = 0;
       circuitBreakers.set(providerName, breaker);
     }
@@ -29,15 +28,17 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
     attempt += 1;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (typeof timeoutId.unref === 'function') {
+      timeoutId.unref();
+    }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetchImpl(url, {
         ...options,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      // 4xx errors should not be retried
       if (response.status >= 400 && response.status < 500) {
         return response;
       }
@@ -46,7 +47,6 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
         throw new Error(`Server error status ${response.status}`);
       }
 
-      // Success - reset breaker failures
       if (breaker.failures > 0) {
         breaker.failures = 0;
         circuitBreakers.set(providerName, breaker);
@@ -57,21 +57,23 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
       clearTimeout(timeoutId);
       lastError = err;
 
-      const isTimeout = err.name === 'AbortError' || err.message?.includes('aborted');
+      const isTimeout = err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('aborted due to timeout');
       const is5xx = err.message?.includes('Server error');
       const isNetwork = !err.status || isTimeout || is5xx;
 
       if (attempt <= maxRetries && isNetwork) {
-        const backoff = Math.pow(2, attempt) * 500 + Math.random() * 200; // exponential backoff + jitter
+        const backoff = Math.pow(2, attempt) * 100 + Math.random() * 50;
         logger.debug(`[http] Retry attempt ${attempt} for ${providerName} after error: ${err.message}`, { providerName, attempt });
-        await new Promise((r) => setTimeout(r, backoff));
+        await new Promise((r) => {
+          const t = setTimeout(r, backoff);
+          if (typeof t.unref === 'function') t.unref();
+        });
         continue;
       }
       break;
     }
   }
 
-  // Record failure in circuit breaker
   breaker.failures += 1;
   if (breaker.failures >= CIRCUIT_THRESHOLD) {
     breaker.resetAt = Date.now() + CIRCUIT_COOLDOWN_MS;

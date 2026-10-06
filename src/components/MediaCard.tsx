@@ -74,7 +74,7 @@ export function MediaCard({
       })
       .catch((error: unknown) => console.warn('Could not load social counts:', error));
     return () => { active = false; };
-  }, [mediaLibraryId, user?.id]);
+  }, [mediaLibraryId, user]);
 
   function prefetch() {
     if (media.media_type !== 'movie') return;

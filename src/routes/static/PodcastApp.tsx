@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { AppShell } from '../../components/AppShell';
@@ -277,7 +277,7 @@ export function PodcastShowPage() {
   const [error, setError] = useState('');
   const { error: actionError, playEpisode, toggleSaved } = usePodcastActions();
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const result = await fetchPodcastShow(showId);
       setShow(result.show);
@@ -286,8 +286,8 @@ export function PodcastShowPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load this show.');
     }
-  }
-  useEffect(() => { void load(); }, [showId]);
+  }, [showId]);
+  useEffect(() => { void load(); }, [load]);
 
   async function onToggleSave(episode: PodcastEpisode) {
     const isSaved = await toggleSaved(episode);
@@ -501,7 +501,7 @@ export function PodcastPlayer() {
 
   useEffect(() => {
     if (audioRef.current && state) audioRef.current.currentTime = state.progressSeconds;
-  }, [state?.episodeId]);
+  }, [state?.episodeId, state]);
 
   async function persist(playing: boolean, seconds = audioRef.current?.currentTime ?? progress) {
     if (!state) return;

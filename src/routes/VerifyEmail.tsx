@@ -54,9 +54,9 @@ export function VerifyEmail() {
           throw new Error(data.error || 'Email verification failed.');
         }
         setStatus('success');
-      } catch (err: any) {
+      } catch (err: unknown) {
         setStatus('error');
-        setErrorMessage(err?.message || 'This link is invalid or expired.');
+        setErrorMessage((err as Error).message || 'This link is invalid or expired.');
       }
     }
     void verify();
@@ -68,8 +68,8 @@ export function VerifyEmail() {
     try {
       await resendVerificationEmail(emailForResend);
       setResendSent(true);
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Could not resend verification email.');
+    } catch (err: unknown) {
+      setErrorMessage((err as Error).message || 'Could not resend verification email.');
     } finally {
       setResending(false);
     }

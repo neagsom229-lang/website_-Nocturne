@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { SmartImage } from '../components/SmartImage';
@@ -11,7 +11,7 @@ import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
 export function TvDetail() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [show, setShow] = useState<any | null>(null);
+  const [show, setShow] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -32,11 +32,11 @@ export function TvDetail() {
         }
         return res.json();
       })
-      .then((data) => {
-        if (active) setShow(data.show);
+      .then((data: { show?: Record<string, unknown> }) => {
+        if (active && data.show) setShow(data.show);
       })
-      .catch((err) => {
-        if (active) setError(err.message);
+      .catch((err: unknown) => {
+        if (active) setError((err as Error).message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -54,99 +54,86 @@ export function TvDetail() {
     return () => { active = false; };
   }, [id]);
 
-  async function saveShow() {
+  async function handleSave() {
     if (!show) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/movies/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdb_id: show.tmdb_id ?? id, media_type: 'tv' }),
+      const res = await saveDiscoveryMedia({
+        type: 'video',
+        provider: 'tmdb',
+        externalId: String(show.id ?? id),
+        title: String(show.title ?? show.name ?? ''),
+        artist: String(show.tagline ?? ''),
+        thumbnailUrl: String(show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : ''),
+        streamUrl: String(show.trailer_url ?? ''),
+        externalUrl: String(show.homepage ?? ''),
       });
-      const data = await res.json();
-      if (data.item?.id) {
-        setMediaLibraryId(data.item.id);
-        setSaved(true);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save show.');
+      setSaved(true);
+      setMediaLibraryId(res.item.id);
+    } catch (saveErr: unknown) {
+      setError((saveErr as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  function playTrailer() {
-    if (!show?.trailer_url) return;
-    playExternalMedia({
-      type: 'video',
-      provider: 'youtube',
-      externalId: `tmdb-tv-${id}-trailer`,
-      title: `${show.title} · Trailer`,
-      artist: 'TV Show Trailer',
-      thumbnailUrl: show.poster_url,
-      streamUrl: show.trailer_url,
-      externalUrl: show.trailer_url,
-    });
-  }
-
   if (loading) {
     return (
-      <section className="media-page" role="status">
-        <div className="music-loading">Opening the screening room…</div>
-      </section>
+      <div className="page-state" role="status">
+        <span className="page-state__icon"><Icon name="play-circle" size={32} /></span>
+        <h1>Opening TV show…</h1>
+      </div>
     );
   }
 
   if (error || !show) {
     return (
-      <section className="media-page">
-        <EmptyState icon="library" title="TV Show not found." body="This show may have been removed or the ID is incorrect." />
-        <button className="btn btn--ghost" onClick={() => navigate('/search')}>Back to Search</button>
-      </section>
+      <EmptyState
+        title="TV Show not found"
+        body={error || 'This TV show could not be loaded.'}
+        action={<button type="button" className="btn btn--primary" onClick={() => navigate(-1)}>Go Back</button>}
+      />
     );
   }
 
-  const discoveryMedia = {
-    id: String(id),
-    title: show.title,
-    media_type: 'tv' as const,
-    source: 'tmdb' as const,
-    thumbnail_url: show.poster_url,
-    external_url: show.external_url ?? `https://www.themoviedb.org/tv/${id}`,
-    stream_url: show.trailer_url,
-    release_year: show.year,
-    rating: show.rating,
-    description: show.overview,
-  };
-
   return (
-    <section className="media-page movie-detail">
-      <Link className="movie-back" to="/search"><Icon name="arrow-left" size={16} /> Search</Link>
-      <div className="movie-detail__layout">
-        {show.poster_url ? <SmartImage className="movie-detail__poster" src={show.poster_url} alt="" /> : null}
-        <div className="movie-detail__copy">
-          <p className="t-eyebrow">NOCTURNE TV SERIES</p>
-          <h1 className="t-h1">{show.title}</h1>
-          <p className="movie-detail__meta">
-            {show.year ?? 'Date unavailable'}
-            {show.number_of_seasons ? ` · ${show.number_of_seasons} Seasons` : ''}
-            {show.rating !== null ? ` · ★ ${show.rating.toFixed(1)}` : ''}
-          </p>
-          <p className="t-body">{show.overview || 'No overview available.'}</p>
-
-          <div className="movie-detail__actions">
+    <section className="media-detail-page">
+      <div className="media-detail-page__hero">
+        <div className="media-detail-page__cover">
+          <SmartImage src={show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : undefined} alt={String(show.title ?? show.name ?? '')} />
+        </div>
+        <div className="media-detail-page__info">
+          <span className="badge badge--pill">TV Series</span>
+          <h1>{String(show.title ?? show.name ?? '')}</h1>
+          <p className="t-mute">{String(show.tagline ?? '')}</p>
+          <div className="media-detail-page__actions">
             {show.trailer_url ? (
-              <button className="btn btn--primary" type="button" onClick={playTrailer}>
-                <Icon name="play" size={16} /> Play Trailer
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => playExternalMedia({
+                  type: 'video',
+                  provider: 'tmdb',
+                  externalId: String(show.id ?? id),
+                  title: String(show.title ?? show.name ?? ''),
+                  artist: String(show.tagline ?? ''),
+                  thumbnailUrl: String(show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : ''),
+                  streamUrl: String(show.trailer_url),
+                })}
+              >
+                <Icon name="play" size={16} /> Watch Trailer
               </button>
             ) : null}
-            <button className="btn btn--ghost" type="button" onClick={saveShow} disabled={saving || saved}>
-              <Icon name={saved ? 'check' : 'bookmark'} size={16} /> {saved ? 'Saved' : saving ? 'Saving…' : 'Save to Library'}
-            </button>
-            <AddToPlaylistButton
-              label={`Add ${show.title} to playlist`}
-              ensureMediaSaved={() => saveDiscoveryMedia(discoveryMedia)}
-            />
+            {!saved ? (
+              <button type="button" className="btn btn--ghost" disabled={saving} onClick={() => void handleSave()}>
+                <Icon name="bookmark" size={16} /> {saving ? 'Saving…' : 'Save to Library'}
+              </button>
+            ) : (
+              <span className="badge badge--pill"><Icon name="check" size={14} /> Saved in Library</span>
+            )}
+            {mediaLibraryId ? (
+              <AddToPlaylistButton mediaLibraryId={mediaLibraryId} label="Add to Playlist" />
+            ) : null}
           </div>
 
           {Array.isArray(show.seasons) && show.seasons.length > 0 ? (
@@ -158,9 +145,9 @@ export function TvDetail() {
                 onChange={(e) => setSelectedSeason(Number(e.target.value))}
                 className="tv-season-select"
               >
-                {show.seasons.map((s: any) => (
-                  <option key={s.id ?? s.season_number} value={s.season_number}>
-                    {s.name ?? `Season ${s.season_number}`} ({s.episode_count ?? 0} eps)
+                {show.seasons.map((s: Record<string, unknown>) => (
+                  <option key={String(s.id ?? s.season_number)} value={Number(s.season_number ?? 1)}>
+                    {String(s.name ?? `Season ${s.season_number}`)} ({Number(s.episode_count ?? 0)} eps)
                   </option>
                 ))}
               </select>

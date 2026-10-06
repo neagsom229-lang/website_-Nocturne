@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef, type ReactNode } from 'react';
 
 export type AuthUser = {
   id: string;
@@ -62,6 +62,8 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
   return payload as T;
 }
 
+const ALLOWED_OAUTH_PREFIXES = ['https://', 'http://localhost'];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | undefined | null>(undefined);
   const [loading, setLoading] = useState(true);
@@ -105,23 +107,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, []);
 
-  async function signInWithEmail(email: string, password: string) {
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
     const { user: loggedInUser } = await authRequest<{ user: AuthUser }>('/api/auth/signin', { email, password });
     setUser(loggedInUser);
-  }
+  }, []);
 
-  async function signUpWithEmail(email: string, password: string, displayName?: string) {
+  const signUpWithEmail = useCallback(async (email: string, password: string, displayName?: string) => {
     const { user: registeredUser } = await authRequest<{ user: AuthUser }>('/api/auth/signup', { email, password, displayName });
     setUser(registeredUser);
-  }
+  }, []);
 
-  async function signUp(email: string, password: string, displayName?: string) {
+  const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
     await signUpWithEmail(email, password, displayName);
-  }
+  }, [signUpWithEmail]);
 
-  const ALLOWED_OAUTH_PREFIXES = ['https://', 'http://localhost'];
-
-  async function signInWithGoogle() {
+  const signInWithGoogle = useCallback(async () => {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/google');
     if (!url || typeof url !== 'string') {
       throw new Error('Invalid OAuth redirect URL received from server.');
@@ -130,9 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(`OAuth URL not in allowlist: ${url}`);
     }
     window.location.href = url;
-  }
+  }, []);
 
-  async function signInWithFacebook() {
+  const signInWithFacebook = useCallback(async () => {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/facebook');
     if (!url || typeof url !== 'string') {
       throw new Error('Invalid OAuth redirect URL received from server.');
@@ -141,20 +141,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(`OAuth URL not in allowlist: ${url}`);
     }
     window.location.href = url;
-  }
+  }, []);
 
-  async function signOut() {
+  const signOut = useCallback(async () => {
     await authRequest<void>('/api/auth/signout', {});
     setUser(null);
-  }
+  }, []);
 
-  async function resendVerificationEmail(email: string) {
+  const resendVerificationEmail = useCallback(async (email: string) => {
     await authRequest('/api/auth/verify-email/resend', { email });
-  }
+  }, []);
 
-  async function resetPassword(email: string) {
+  const resetPassword = useCallback(async (email: string) => {
     await authRequest('/api/auth/reset-password', { email });
-  }
+  }, []);
 
   const value = useMemo(() => ({
     user,
@@ -167,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     resendVerificationEmail,
     resetPassword,
-  }), [user, loading, signInWithEmail, signUpWithEmail, signUp, signInWithGoogle, signInWithFacebook, resendVerificationEmail, resetPassword]);
+  }), [user, loading, signInWithEmail, signUpWithEmail, signUp, signInWithGoogle, signInWithFacebook, signOut, resendVerificationEmail, resetPassword]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

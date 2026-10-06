@@ -77,7 +77,7 @@ export function ProfilePage() {
       if (active) setContentLoading(false);
     });
     return () => { active = false; };
-  }, [activeTab, id, profile?.id, profile?.isPublic, user?.id]);
+  }, [activeTab, id, profile, user?.id]);
 
   function selectTab(next: ProfileTab) {
     const params = new URLSearchParams(tab);

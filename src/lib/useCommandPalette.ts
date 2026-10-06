@@ -23,7 +23,7 @@ export function useCommandPalette() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const isMac = /Mac|iPhone|iPad/.test(
-        (navigator as any).userAgentData?.platform || navigator.platform || ''
+        (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || ''
       );
       const cmdKey = isMac ? e.metaKey : e.ctrlKey;
       const target = document.activeElement as HTMLElement;
@@ -41,8 +41,8 @@ export function useCommandPalette() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, open, close]);
 
   return { isOpen, open, close };

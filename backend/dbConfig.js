@@ -9,11 +9,11 @@ export function getSslConfig(databaseUrl) {
     };
   }
 
-  // Development
-  if (databaseUrl.hostname.endsWith('.pooler.supabase.com') || databaseUrl.hostname !== 'localhost' && databaseUrl.hostname !== '127.0.0.1') {
-    console.warn('[db] WARNING: SSL rejectUnauthorized is false in development/remote connection.');
+  // Development / non-production
+  if (databaseUrl.hostname.endsWith('.pooler.supabase.com')) {
+    return { rejectUnauthorized: false };
   }
-  return {
-    rejectUnauthorized: false,
-  };
+
+  // Localhost / default non-pooler URLs use default SSL behavior (undefined)
+  return undefined;
 }

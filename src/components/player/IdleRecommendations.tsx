@@ -56,7 +56,7 @@ export function IdleRecommendations({ isIdle, onPlay }: { isIdle: boolean; onPla
             className="idle-recommendation-card"
             onClick={() => onPlay({
               type: 'audio',
-              provider: (item.source as any) || 'audius',
+              provider: (item.source as 'audius' | 'deezer' | 'youtube' | 'librivox') || 'audius',
               externalId: item.id,
               title: item.title,
               artist: item.artist || null,

@@ -3,14 +3,23 @@ import test from 'node:test';
 import { fetchWithResilience } from '../backend/lib/http.js';
 import { validateAndLoadConfig } from '../backend/config.js';
 
-test('fetchWithResilience throws timeout or handles network resilience', async () => {
-  // Test with invalid URL or aborted signal
+test('fetchWithResilience throws timeout error when fetchImpl aborts', async () => {
+  const mockFetch = async (_url, options) => {
+    return new Promise((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        reject(err);
+      });
+    });
+  };
+
   const oldEnv = process.env.HTTP_TIMEOUT_MS;
-  process.env.HTTP_TIMEOUT_MS = '50';
+  process.env.HTTP_TIMEOUT_MS = '20';
   try {
     await assert.rejects(
-      async () => fetchWithResilience('https://httpbin.org/delay/5', {}, 'test-provider'),
-      /aborted|fetch failed|Failed to fetch/
+      async () => fetchWithResilience('http://localhost/test', {}, 'test-provider', mockFetch),
+      /aborted/
     );
   } finally {
     if (oldEnv === undefined) delete process.env.HTTP_TIMEOUT_MS;

@@ -7,11 +7,12 @@ import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import type { DiscoveryMedia } from '../types';
 
 export function AudiobookDetail() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [book, setBook] = useState<any | null>(null);
+  const [book, setBook] = useState<DiscoveryMedia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -24,115 +25,124 @@ export function AudiobookDetail() {
     setLoading(true);
     fetch(`/api/search/unified?q=${encodeURIComponent(id)}&type=audiobook`)
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: { results?: DiscoveryMedia[] }) => {
         if (!active) return;
-        const found = data.results?.find((item: any) => item.id === id) || data.results?.[0];
+        const found = data.results?.find((item) => item.id === id) || data.results?.[0];
         if (!found) throw new Error('Audiobook not found');
         setBook(found);
       })
-      .catch((err) => {
-        if (active) setError(err.message);
+      .catch((err: unknown) => {
+        if (active) setError((err as Error).message);
       })
       .finally(() => {
         if (active) setLoading(false);
       });
 
-    fetchMediaLibrary().then((items) => {
-      if (!active) return;
-      const found = items.find((item) => item.externalId === id);
-      if (found?.id) {
-        setMediaLibraryId(found.id);
-        setSaved(true);
-      }
-    }).catch(() => {});
+    fetchMediaLibrary()
+      .then((items) => {
+        if (!active) return;
+        const existing = items.find((i) => i.externalId === id);
+        if (existing) {
+          setSaved(true);
+          setMediaLibraryId(existing.id);
+        }
+      })
+      .catch(() => {});
 
     return () => { active = false; };
   }, [id]);
 
-  async function saveBook() {
+  async function handleSave() {
     if (!book) return;
     setSaving(true);
     try {
-      const libraryId = await saveDiscoveryMedia({
-        id: book.id,
-        title: book.title,
-        artist: book.subtitle,
-        media_type: 'audiobook',
-        source: book.source,
-        thumbnail_url: book.thumbnail_url,
-        stream_url: book.stream_url,
-        external_url: book.external_url,
-      });
-      setMediaLibraryId(libraryId);
+      const res = await saveDiscoveryMedia(book);
       setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save audiobook.');
+      setMediaLibraryId(res.item.id);
+    } catch (saveErr: unknown) {
+      setError((saveErr as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  function play() {
-    if (!book?.stream_url) return;
-    playExternalMedia({
-      type: 'audio',
-      provider: book.source,
-      mediaType: 'audiobook',
-      externalId: book.id,
-      title: book.title,
-      artist: book.subtitle,
-      thumbnailUrl: book.thumbnail_url,
-      streamUrl: book.stream_url,
-      externalUrl: book.external_url,
-    });
+  if (loading) {
+    return (
+      <div className="page-state" role="status">
+        <span className="page-state__icon"><Icon name="headphones" size={32} /></span>
+        <h1>Opening audiobook…</h1>
+      </div>
+    );
   }
 
-  if (loading) return <section className="media-page" role="status"><div className="music-loading">Loading audiobook…</div></section>;
   if (error || !book) {
     return (
-      <section className="media-page">
-        <EmptyState icon="book" title="Audiobook not found." body="Could not load audiobook details." />
-        <button className="btn btn--ghost" onClick={() => navigate('/search')}>Back to Search</button>
-      </section>
+      <EmptyState
+        title="Audiobook not found"
+        body={error || 'This audiobook could not be loaded.'}
+        action={<button type="button" className="btn btn--primary" onClick={() => navigate(-1)}>Go Back</button>}
+      />
     );
   }
 
   return (
-    <section className="media-page movie-detail">
-      <Link className="movie-back" to="/search"><Icon name="arrow-left" size={16} /> Search</Link>
-      <div className="movie-detail__layout">
-        {book.thumbnail_url ? <SmartImage className="movie-detail__poster" src={book.thumbnail_url} alt="" /> : null}
-        <div className="movie-detail__copy">
-          <p className="t-eyebrow">NOCTURNE AUDIOBOOK & LIBRIVOX</p>
-          <h1 className="t-h1">{book.title}</h1>
-          <p className="movie-detail__meta">{book.subtitle ?? 'Author'} {book.release_year ? `· ${book.release_year}` : ''}</p>
-          <p className="t-body">{book.description || 'A timeless classic read aloud in the quiet hours.'}</p>
-
-          <div className="movie-detail__actions">
-            {book.stream_url ? (
-              <button className="btn btn--primary" type="button" onClick={play}>
-                <Icon name="play" size={16} /> Play Audiobook
-              </button>
-            ) : null}
-            <button className="btn btn--ghost" type="button" onClick={saveBook} disabled={saving || saved}>
-              <Icon name={saved ? 'check' : 'bookmark'} size={16} /> {saved ? 'Saved' : saving ? 'Saving…' : 'Save to Library'}
+    <article className="media-detail-page">
+      <div className="media-detail-page__hero">
+        <div className="media-detail-page__cover">
+          <SmartImage src={book.thumbnailUrl} alt={book.title} />
+        </div>
+        <div className="media-detail-page__info">
+          <span className="badge badge--pill">Audiobook</span>
+          <h1>{book.title}</h1>
+          <p className="t-mute">{book.artist}</p>
+          <div className="media-detail-page__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => playExternalMedia({
+                type: 'audio',
+                provider: book.provider,
+                externalId: book.externalId,
+                title: book.title,
+                artist: book.artist,
+                thumbnailUrl: book.thumbnailUrl,
+                streamUrl: book.streamUrl,
+                externalUrl: book.externalUrl,
+              })}
+            >
+              <Icon name="play" size={16} /> Listen Now
             </button>
-            <AddToPlaylistButton
-              label={`Add ${book.title} to playlist`}
-              ensureMediaSaved={() => saveDiscoveryMedia(book)}
-            />
+            {!saved ? (
+              <button type="button" className="btn btn--ghost" disabled={saving} onClick={() => void handleSave()}>
+                <Icon name="bookmark" size={16} /> {saving ? 'Saving…' : 'Save to Library'}
+              </button>
+            ) : (
+              <span className="badge badge--pill"><Icon name="check" size={14} /> Saved in Library</span>
+            )}
+            {mediaLibraryId ? (
+              <AddToPlaylistButton mediaLibraryId={mediaLibraryId} label="Add to Playlist" />
+            ) : null}
           </div>
         </div>
       </div>
 
-      {mediaLibraryId ? (
-        <div id="comments"><CommentThread mediaLibraryId={mediaLibraryId} /></div>
-      ) : (
-        <section id="comments" className="comment-thread">
-          <h2>Notes from the room</h2>
-          <p>Save this audiobook to your library to open its conversation.</p>
+      {book.description ? (
+        <section className="media-detail-page__section">
+          <h2>About</h2>
+          <p style={{ lineHeight: 1.6, color: 'var(--tp-mute)' }}>{book.description}</p>
         </section>
-      )}
-    </section>
+      ) : null}
+
+      {mediaLibraryId ? (
+        <section className="media-detail-page__section">
+          <h2>Discussion</h2>
+          <CommentThread mediaLibraryId={mediaLibraryId} />
+        </section>
+      ) : null}
+
+      <div style={{ marginTop: '32px' }}>
+        <Link to="/search" className="btn btn--ghost"><Icon name="arrow-left" size={16} /> Back to Search</Link>
+      </div>
+    </article>
   );
 }

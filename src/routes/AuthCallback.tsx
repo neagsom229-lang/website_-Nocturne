@@ -48,9 +48,9 @@ export function AuthCallback() {
         const redirectTo = searchParams.get('redirect') || searchParams.get('from') || '/';
         console.info('[callback] success, redirecting to', redirectTo);
         navigate(redirectTo, { replace: true });
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[callback] FAILED:', err);
-        setError(err?.message || 'Could not complete sign in.');
+        setError((err as Error).message || 'Could not complete sign in.');
       } finally {
         setLoading(false);
       }

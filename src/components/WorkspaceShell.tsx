@@ -352,7 +352,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   useEffect(() => {
     if (!shuffle) {
-      setExternalQueue((prev) => [...prev].sort((a: any, b: any) => (a._originalIndex ?? 0) - (b._originalIndex ?? 0)));
+      setExternalQueue((prev) => [...prev].sort((a: ExternalMedia & { _originalIndex?: number }, b: ExternalMedia & { _originalIndex?: number }) => (a._originalIndex ?? 0) - (b._originalIndex ?? 0)));
     }
   }, [shuffle]);
 
@@ -360,7 +360,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
   const [isMac, setIsMac] = useState(true);
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/.test(
-      (navigator as any).userAgentData?.platform || navigator.platform || ''
+      (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || ''
     ));
   }, []);
 
@@ -370,8 +370,8 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   function recordPlayHistory(item: { id: string; title: string; artist?: string }) {
     try {
-      const history = JSON.parse(localStorage.getItem('nocturne_play_history') || '[]');
-      const next = [item, ...history.filter((i: any) => i.id !== item.id)].slice(0, 5);
+      const history = JSON.parse(localStorage.getItem('nocturne_play_history') || '[]') as Array<{ id: string }>;
+      const next = [item, ...history.filter((i) => i.id !== item.id)].slice(0, 5);
       localStorage.setItem('nocturne_play_history', JSON.stringify(next));
       setRecentlyPlayed(next);
     } catch {}
@@ -410,7 +410,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
     }
     void loadPlayer();
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => {
     if (!externalMedia && nowPlaying) {
@@ -419,7 +419,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
       audioRef.current?.seekTo(nowPlaying.progressSeconds, 'seconds');
       recordPlayHistory({ id: nowPlaying.track.id, title: nowPlaying.track.title, artist: nowPlaying.track.artist });
     }
-  }, [nowPlaying?.track.id, playerReady]);
+  }, [nowPlaying?.track.id, playerReady, externalMedia, nowPlaying]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -464,7 +464,7 @@ export function WorkspaceShell({ children }: { children?: ReactNode }) {
 
   function playExternalQueue(queueList: ExternalMedia[]) {
     if (!queueList.length) return;
-    const tagged = queueList.map((item, idx) => ({ ...item, _originalIndex: (item as any)._originalIndex ?? idx }));
+    const tagged = queueList.map((item, idx) => ({ ...item, _originalIndex: (item as ExternalMedia & { _originalIndex?: number })._originalIndex ?? idx }));
     setExternalQueue(tagged);
     setExternalQueueIndex(0);
     playExternalMedia(tagged[0]);

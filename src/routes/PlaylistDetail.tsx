@@ -62,7 +62,7 @@ export function PlaylistDetailPage() {
   const [saving, setSaving] = useState(false);
   const [commentsFor, setCommentsFor] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -74,9 +74,9 @@ export function PlaylistDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
-  useEffect(() => { void load(); }, [id]);
+  useEffect(() => { void load(); }, [load]);
 
   const isOwner = Boolean(playlist && playlist.userId === user?.id);
   const totalDuration = items.reduce((total, item) => total + (item.durationSeconds ?? 0), 0);

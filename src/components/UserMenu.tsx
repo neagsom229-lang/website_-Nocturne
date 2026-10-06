@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from './Icon';
@@ -13,12 +13,12 @@ export function UserMenu() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   useFocusTrap(menuRef, isOpen);
 
-  const items = [
+  const items = useMemo(() => [
     { label: 'View profile', to: user ? `/u/${encodeURIComponent(user.id)}` : '/auth/login', icon: 'user' as const },
     { label: 'Settings', to: '/settings', icon: 'settings' as const },
     { label: 'Security', to: '/settings/security', icon: 'shield' as const },
     { label: 'Sign out', action: 'signout', icon: 'close' as const, isDanger: true },
-  ];
+  ], [user]);
 
   const closeMenu = useCallback(() => {
     setIsOpen(false);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useCallback, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { AppShell } from '../../components/AppShell';
@@ -244,7 +244,7 @@ export function DatingChat() {
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const [loadedProfile, loadedMessages] = await Promise.all([fetchDatingProfile(profileId), fetchDatingMessages(profileId)]);
       setProfile(loadedProfile);
@@ -253,8 +253,8 @@ export function DatingChat() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not open this conversation.');
     }
-  }
-  useEffect(() => { void load(); }, [profileId]);
+  }, [profileId]);
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type FetchState<T> = {
   data: T;
@@ -9,7 +9,7 @@ export type FetchState<T> = {
 };
 
 export function useFetchWithRetry<T>(
-  fetchFn: () => Promise<any>,
+  fetchFn: () => Promise<unknown>,
   initialData: T
 ): FetchState<T> {
   const [data, setData] = useState<T>(initialData);
@@ -17,6 +17,9 @@ export function useFetchWithRetry<T>(
   const [degraded, setDegraded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+
+  const initialDataRef = useRef(initialData);
+  initialDataRef.current = initialData;
 
   useEffect(() => {
     let active = true;
@@ -29,33 +32,35 @@ export function useFetchWithRetry<T>(
         const response = await fetchFn();
         if (!active) return;
 
-        let payload: any = response;
+        let payload: unknown = response;
         let isDegraded = false;
 
         if (response && typeof response === 'object') {
-          if ('results' in response) payload = response.results;
-          else if ('movie' in response) payload = response.movie;
-          else if ('show' in response) payload = response.show;
-          if ('degraded' in response) isDegraded = Boolean(response.degraded);
+          const resObj = response as Record<string, unknown>;
+          if ('results' in resObj) payload = resObj.results;
+          else if ('movie' in resObj) payload = resObj.movie;
+          else if ('show' in resObj) payload = resObj.show;
+          if ('degraded' in resObj) isDegraded = Boolean(resObj.degraded);
         }
 
-        setData(payload ?? initialData);
+        setData((payload as T) ?? initialDataRef.current);
         setDegraded(isDegraded);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!active) return;
-        if (err?.status === 401 || err?.message?.includes('401') || err?.message?.includes('Please log in')) {
-          setData(initialData);
+        const errObj = err as { status?: number; message?: string };
+        if (errObj?.status === 401 || errObj?.message?.includes('401') || errObj?.message?.includes('Please log in')) {
+          setData(initialDataRef.current);
           setDegraded(false);
           setError(null);
           return;
         }
         if (!isRetry) {
           setTimeout(() => {
-            if (active) execute(true);
+            if (active) void execute(true);
           }, 2000);
           return;
         }
-        setError(err?.message || 'Could not load data.');
+        setError(errObj?.message || 'Could not load data.');
         setDegraded(true);
       } finally {
         if (active) setLoading(false);

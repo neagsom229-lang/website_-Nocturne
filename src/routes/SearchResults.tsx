@@ -142,7 +142,7 @@ export function SearchResultsPage() {
       stream_url: item.stream_url,
       external_url: item.external_url,
       media_type: item.media_type === 'video_podcast' ? 'video' : item.media_type,
-      source: item.source as any,
+      source: item.source as 'audius' | 'deezer' | 'youtube' | 'librivox' | 'tmdb',
       duration_seconds: item.duration_seconds,
       release_year: item.release_year,
       rating: item.rating,

@@ -6,8 +6,8 @@ export function SettingsSecurity() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [activity, setActivity] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<Array<Record<string, unknown>>>([]);
+  const [activity, setActivity] = useState<Array<Record<string, unknown>>>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
 
   // Change password state
@@ -68,8 +68,8 @@ export function SettingsSecurity() {
       setCurrentPassword('');
       setNewPassword('');
       loadSecurityData();
-    } catch (err: any) {
-      setPasswordMessage({ type: 'error', text: err?.message || 'Failed to change password' });
+    } catch (err: unknown) {
+      setPasswordMessage({ type: 'error', text: (err as Error)?.message || 'Failed to change password' });
     } finally {
       setChangingPassword(false);
     }
@@ -90,8 +90,8 @@ export function SettingsSecurity() {
       if (!res.ok) throw new Error(data.error || 'Failed to request email change');
       setEmailMessage({ type: 'success', text: 'Check your new email inbox to confirm the change.' });
       setNewEmail('');
-    } catch (err: any) {
-      setEmailMessage({ type: 'error', text: err?.message || 'Failed to request email change' });
+    } catch (err: unknown) {
+      setEmailMessage({ type: 'error', text: (err as Error)?.message || 'Failed to request email change' });
     } finally {
       setChangingEmail(false);
     }

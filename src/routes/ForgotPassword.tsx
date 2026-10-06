@@ -23,8 +23,8 @@ export function ForgotPassword() {
         throw new Error(data.error || 'Could not send reset link');
       }
       setSent(true);
-    } catch (err: any) {
-      setError(err?.message || 'Could not send reset link');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Could not send reset link');
     } finally {
       setLoading(false);
     }

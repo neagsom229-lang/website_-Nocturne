@@ -39,8 +39,8 @@ export function ResetPassword() {
         throw new Error(data.error || 'Password reset failed');
       }
       setSuccess(true);
-    } catch (err: any) {
-      setError(err?.message || 'Password reset failed');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Password reset failed');
     } finally {
       setLoading(false);
     }

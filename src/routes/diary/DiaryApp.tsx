@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, useCallback, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { AppShell } from '../../components/AppShell';
@@ -72,7 +72,7 @@ export function DiaryHome() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoadingEntries(true);
     try {
       const [loadedEntries, loadedStats] = await Promise.all([
@@ -87,8 +87,8 @@ export function DiaryHome() {
     } finally {
       setLoadingEntries(false);
     }
-  }
-  useEffect(() => { void load(); }, [filter]);
+  }, [filter]);
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (location.pathname === '/mood') {
       document.getElementById('check-in')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

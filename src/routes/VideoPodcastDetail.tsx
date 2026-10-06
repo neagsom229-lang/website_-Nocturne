@@ -7,11 +7,12 @@ import { AddToPlaylistButton } from '../components/AddToPlaylistButton';
 import { CommentThread } from '../components/CommentThread';
 import { useWorkspacePlayer } from '../components/WorkspaceShell';
 import { fetchMediaLibrary, saveDiscoveryMedia } from '../lib/mediaApi';
+import type { DiscoveryMedia } from '../types';
 
 export function VideoPodcastDetail() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [video, setVideo] = useState<any | null>(null);
+  const [podcast, setPodcast] = useState<DiscoveryMedia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -24,115 +25,125 @@ export function VideoPodcastDetail() {
     setLoading(true);
     fetch(`/api/search/unified?q=${encodeURIComponent(id)}&type=video_podcast`)
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: { results?: DiscoveryMedia[] }) => {
         if (!active) return;
-        const found = data.results?.find((item: any) => item.id === id) || data.results?.[0];
+        const found = data.results?.find((item) => item.id === id) || data.results?.[0];
         if (!found) throw new Error('Video podcast not found');
-        setVideo(found);
+        setPodcast(found);
       })
-      .catch((err) => {
-        if (active) setError(err.message);
+      .catch((err: unknown) => {
+        if (active) setError((err as Error).message);
       })
       .finally(() => {
         if (active) setLoading(false);
       });
 
-    fetchMediaLibrary().then((items) => {
-      if (!active) return;
-      const found = items.find((item) => item.externalId === id);
-      if (found?.id) {
-        setMediaLibraryId(found.id);
-        setSaved(true);
-      }
-    }).catch(() => {});
+    fetchMediaLibrary()
+      .then((items) => {
+        if (!active) return;
+        const existing = items.find((i) => i.externalId === id);
+        if (existing) {
+          setSaved(true);
+          setMediaLibraryId(existing.id);
+        }
+      })
+      .catch(() => {});
 
     return () => { active = false; };
   }, [id]);
 
-  async function saveVideo() {
-    if (!video) return;
+  async function handleSave() {
+    if (!podcast) return;
     setSaving(true);
     try {
-      const libraryId = await saveDiscoveryMedia({
-        id: video.id,
-        title: video.title,
-        channel: video.subtitle,
-        media_type: 'video_podcast',
-        source: video.source,
-        thumbnail_url: video.thumbnail_url,
-        stream_url: video.stream_url,
-        external_url: video.external_url,
-      });
-      setMediaLibraryId(libraryId);
+      const res = await saveDiscoveryMedia(podcast);
       setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save video.');
+      setMediaLibraryId(res.item.id);
+    } catch (saveErr: unknown) {
+      setError((saveErr as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  function play() {
-    if (!video?.stream_url) return;
-    playExternalMedia({
-      type: 'video',
-      provider: video.source,
-      mediaType: 'video_podcast',
-      externalId: video.id,
-      title: video.title,
-      artist: video.subtitle,
-      thumbnailUrl: video.thumbnail_url,
-      streamUrl: video.stream_url,
-      externalUrl: video.external_url,
-    });
+  if (loading) {
+    return (
+      <div className="page-state" role="status">
+        <span className="page-state__icon"><Icon name="play-circle" size={32} /></span>
+        <h1>Opening video podcast…</h1>
+      </div>
+    );
   }
 
-  if (loading) return <section className="media-page" role="status"><div className="music-loading">Loading video…</div></section>;
-  if (error || !video) {
+  if (error || !podcast) {
     return (
-      <section className="media-page">
-        <EmptyState icon="play-circle" title="Video not found." body="Could not load video podcast details." />
-        <button className="btn btn--ghost" onClick={() => navigate('/search')}>Back to Search</button>
-      </section>
+      <EmptyState
+        title="Video podcast not found"
+        body={error || 'This video podcast could not be loaded.'}
+        action={<button type="button" className="btn btn--primary" onClick={() => navigate(-1)}>Go Back</button>}
+      />
     );
   }
 
   return (
-    <section className="media-page movie-detail">
-      <Link className="movie-back" to="/search"><Icon name="arrow-left" size={16} /> Search</Link>
-      <div className="movie-detail__layout">
-        {video.thumbnail_url ? <SmartImage className="movie-detail__poster" src={video.thumbnail_url} alt="" /> : null}
-        <div className="movie-detail__copy">
-          <p className="t-eyebrow">NOCTURNE VIDEO PODCAST</p>
-          <h1 className="t-h1">{video.title}</h1>
-          <p className="movie-detail__meta">{video.subtitle ?? 'Channel'}</p>
-          <p className="t-body">{video.description || 'A visual conversation in the quiet hours.'}</p>
-
-          <div className="movie-detail__actions">
-            {video.stream_url ? (
-              <button className="btn btn--primary" type="button" onClick={play}>
-                <Icon name="play" size={16} /> Play Video with PiP
-              </button>
-            ) : null}
-            <button className="btn btn--ghost" type="button" onClick={saveVideo} disabled={saving || saved}>
-              <Icon name={saved ? 'check' : 'bookmark'} size={16} /> {saved ? 'Saved' : saving ? 'Saving…' : 'Save to Library'}
+    <article className="media-detail-page">
+      <div className="media-detail-page__hero">
+        <div className="media-detail-page__cover">
+          <SmartImage src={podcast.thumbnailUrl} alt={podcast.title} />
+        </div>
+        <div className="media-detail-page__info">
+          <span className="badge badge--pill">Video Podcast</span>
+          <h1>{podcast.title}</h1>
+          <p className="t-mute">{podcast.artist}</p>
+          <div className="media-detail-page__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => playExternalMedia({
+                type: 'video',
+                mediaType: 'video_podcast',
+                provider: podcast.provider,
+                externalId: podcast.externalId,
+                title: podcast.title,
+                artist: podcast.artist,
+                thumbnailUrl: podcast.thumbnailUrl,
+                streamUrl: podcast.streamUrl,
+                externalUrl: podcast.externalUrl,
+              })}
+            >
+              <Icon name="play" size={16} /> Watch Episode
             </button>
-            <AddToPlaylistButton
-              label={`Add ${video.title} to playlist`}
-              ensureMediaSaved={() => saveDiscoveryMedia(video)}
-            />
+            {!saved ? (
+              <button type="button" className="btn btn--ghost" disabled={saving} onClick={() => void handleSave()}>
+                <Icon name="bookmark" size={16} /> {saving ? 'Saving…' : 'Save to Library'}
+              </button>
+            ) : (
+              <span className="badge badge--pill"><Icon name="check" size={14} /> Saved in Library</span>
+            )}
+            {mediaLibraryId ? (
+              <AddToPlaylistButton mediaLibraryId={mediaLibraryId} label="Add to Playlist" />
+            ) : null}
           </div>
         </div>
       </div>
 
-      {mediaLibraryId ? (
-        <div id="comments"><CommentThread mediaLibraryId={mediaLibraryId} /></div>
-      ) : (
-        <section id="comments" className="comment-thread">
-          <h2>Notes from the room</h2>
-          <p>Save this video to your library to open its conversation.</p>
+      {podcast.description ? (
+        <section className="media-detail-page__section">
+          <h2>About</h2>
+          <p style={{ lineHeight: 1.6, color: 'var(--tp-mute)' }}>{podcast.description}</p>
         </section>
-      )}
-    </section>
+      ) : null}
+
+      {mediaLibraryId ? (
+        <section className="media-detail-page__section">
+          <h2>Discussion</h2>
+          <CommentThread mediaLibraryId={mediaLibraryId} />
+        </section>
+      ) : null}
+
+      <div style={{ marginTop: '32px' }}>
+        <Link to="/search" className="btn btn--ghost"><Icon name="arrow-left" size={16} /> Back to Search</Link>
+      </div>
+    </article>
   );
 }

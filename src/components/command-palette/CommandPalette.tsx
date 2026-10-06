@@ -64,7 +64,7 @@ export default function CommandPalette({ isOpen, onClose }: { isOpen: boolean; o
   const hasQuery = query.trim().length >= 2;
   const totalItems = hasQuery ? suggestions.length : recents.length + 4;
 
-  const handleSelect = useCallback(async (type: 'action' | 'recent' | 'suggestion', value: any) => {
+  const handleSelect = useCallback(async (type: 'action' | 'recent' | 'suggestion', value: unknown) => {
     if (type === 'action') {
       if (value === 'movies') navigate('/movies');
       else if (value === 'library') navigate('/library');
