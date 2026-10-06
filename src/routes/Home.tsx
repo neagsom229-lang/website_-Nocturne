@@ -58,7 +58,7 @@ function useSection<T>(load: () => Promise<T>, initial: T, enabled = true): Sect
 }
 
 const emptyTrending: TrendingFeed = { movies: [], podcasts: [], music: [] };
-const emptyReleases: NewReleases = { movies: [], podcasts: [] };
+const emptyReleases: NewReleases = { movies: [], podcasts: [], music: [] };
 
 function DiscoveryHome({ signedIn, authLoaded }: { signedIn: boolean; authLoaded: boolean }) {
   const player = useOptionalWorkspacePlayer();

@@ -47,10 +47,10 @@ export function SignUp() {
     setSubmitting(true);
     setError('');
     try {
-      const res = await signUpWithEmail(email, password, displayName);
-      setSuccessEmail(res.email || email);
-    } catch (err: any) {
-      setError(err?.message || 'That didn’t work. Please try again.');
+      await signUpWithEmail(email, password, displayName);
+      setSuccessEmail(email);
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'That didn’t work. Please try again.');
     } finally {
       setSubmitting(false);
     }

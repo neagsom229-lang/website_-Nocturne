@@ -9,7 +9,7 @@ export const logger = {
     console.error(JSON.stringify({ level: 'error', time: new Date().toISOString(), msg, ...meta }));
   },
   debug(msg, meta = {}) {
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV !== 'production') {
       console.debug(JSON.stringify({ level: 'debug', time: new Date().toISOString(), msg, ...meta }));
     }
   }

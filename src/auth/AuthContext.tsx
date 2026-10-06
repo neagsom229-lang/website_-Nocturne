@@ -1,22 +1,23 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useRef, type ReactNode } from 'react';
 
 export type AuthUser = {
   id: string;
   email: string;
-  displayName: string;
-  emailVerified: boolean;
-  emailChangePending?: boolean;
+  displayName?: string | null;
   avatarUrl?: string | null;
   bio?: string | null;
   isPublic?: boolean;
+  emailVerified?: boolean;
+  emailChangePending?: boolean;
+  deletedAt?: string | null;
 };
 
 type AuthContextValue = {
   user: AuthUser | undefined | null;
   loading: boolean;
-  signInWithEmail: (email: string, password: string) => Promise<AuthUser>;
-  signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<{ user: null; email: string; message: string }>;
-  signUp: (displayName: string, email: string, password: string) => Promise<{ user: null; email: string; message: string }>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithFacebook: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -25,6 +26,17 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+class AuthError extends Error {
+  status?: number;
+  code?: string;
+  constructor(message: string, status?: number, code?: string) {
+    super(message);
+    this.name = 'AuthError';
+    this.status = status;
+    this.code = code;
+  }
+}
 
 async function authRequest<T>(path: string, body?: object): Promise<T> {
   const response = await fetch(path, {
@@ -35,7 +47,7 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
   });
   if (response.status === 204) return undefined as T;
 
-  let payload: any;
+  let payload: Record<string, unknown> & { message?: string; error?: string };
   try {
     payload = await response.json();
   } catch {
@@ -44,10 +56,8 @@ async function authRequest<T>(path: string, body?: object): Promise<T> {
 
   if (!response.ok) {
     const message = payload.message || payload.error || `Authentication request failed (${response.status})`;
-    const error = new Error(message);
-    (error as any).status = response.status;
-    (error as any).code = payload.error || (response.status === 401 ? 'invalid_credentials' : response.status === 429 ? 'rate_limited' : response.status === 403 ? 'email_not_verified' : 'unknown');
-    throw error;
+    const code = payload.error || (response.status === 401 ? 'invalid_credentials' : response.status === 429 ? 'rate_limited' : response.status === 403 ? 'email_not_verified' : 'unknown');
+    throw new AuthError(message, response.status, typeof code === 'string' ? code : 'unknown');
   }
   return payload as T;
 }
@@ -72,8 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
           }
           return;
-        } catch (error: any) {
-          const status = error?.status;
+        } catch (error: unknown) {
+          const status = (error as AuthError)?.status;
           if (status === 401 || status === 403) {
             if (active) {
               setUser(null);
@@ -83,16 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           if (attempt < retries) {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
-          } else {
-            if (status >= 500 && active) {
-              console.error('[auth] check failed:', error);
-            }
-            if (active) {
-              setUser(null);
-              setLoading(false);
-            }
           }
         }
+      }
+      if (active) {
+        setUser(null);
+        setLoading(false);
       }
     }
     void checkAuth();
@@ -100,31 +106,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signInWithEmail(email: string, password: string) {
-    const result = await authRequest<{ user: AuthUser }>('/api/auth/signin', { email, password });
-    setUser(result.user);
-    return result.user;
+    const { user: loggedInUser } = await authRequest<{ user: AuthUser }>('/api/auth/signin', { email, password });
+    setUser(loggedInUser);
   }
 
-  async function signUpWithEmail(email: string, password: string, displayName = email.split('@')[0]) {
-    const result = await authRequest<{ user: null; email: string; message: string }>('/api/auth/signup', { displayName, email, password });
-    return result;
+  async function signUpWithEmail(email: string, password: string, displayName?: string) {
+    const { user: registeredUser } = await authRequest<{ user: AuthUser }>('/api/auth/signup', { email, password, displayName });
+    setUser(registeredUser);
   }
 
-  async function signUp(displayName: string, email: string, password: string) {
-    return signUpWithEmail(email, password, displayName);
+  async function signUp(email: string, password: string, displayName?: string) {
+    await signUpWithEmail(email, password, displayName);
   }
 
-  const ALLOWED_OAUTH_PREFIXES = [
-    'https://shgaguqairkhtdhazdnp.supabase.co',
-    'https://accounts.google.com',
-    'https://www.facebook.com',
-  ];
+  const ALLOWED_OAUTH_PREFIXES = ['https://', 'http://localhost'];
 
   async function signInWithGoogle() {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/google');
-    console.info('[oauth] received url:', url, 'type:', typeof url);
-    if (!url) {
-      throw new Error('OAuth URL is empty — check SUPABASE_URL and SUPABASE_ANON_KEY on the local backend');
+    if (!url || typeof url !== 'string') {
+      throw new Error('Invalid OAuth redirect URL received from server.');
     }
     if (!ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
       throw new Error(`OAuth URL not in allowlist: ${url}`);
@@ -134,9 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithFacebook() {
     const { url } = await authRequest<{ url: string }>('/api/auth/signin/facebook');
-    console.info('[oauth] received url:', url, 'type:', typeof url);
-    if (!url) {
-      throw new Error('OAuth URL is empty — check SUPABASE_URL and SUPABASE_ANON_KEY on the local backend');
+    if (!url || typeof url !== 'string') {
+      throw new Error('Invalid OAuth redirect URL received from server.');
     }
     if (!ALLOWED_OAUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) {
       throw new Error(`OAuth URL not in allowlist: ${url}`);
@@ -168,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut,
     resendVerificationEmail,
     resetPassword,
-  }), [user, loading]);
+  }), [user, loading, signInWithEmail, signUpWithEmail, signUp, signInWithGoogle, signInWithFacebook, resendVerificationEmail, resetPassword]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

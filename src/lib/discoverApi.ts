@@ -11,14 +11,14 @@ async function request<T>(path: string, retries = 3, delayMs = 500): Promise<T> 
           && 'error' in payload && typeof payload.error === 'string'
           ? payload.error
           : `Request failed (${response.status})`;
-        const error: any = new Error(message);
+        const error = new Error(message) as Error & { status?: number };
         error.status = response.status;
         throw error;
       }
       return payload as T;
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
-      const status = error?.status;
+      const status = (error as { status?: number })?.status;
       if (status && status >= 400 && status < 500) {
         break;
       }
@@ -39,43 +39,37 @@ export type TrendingFeed = {
 export type NewReleases = {
   movies: DiscoveryMedia[];
   podcasts: DiscoveryMedia[];
+  music: DiscoveryMedia[];
 };
 
-export async function getTrending(): Promise<TrendingFeed> {
-  try {
-    return await request<TrendingFeed>('/api/discover/trending');
-  } catch {
-    return { movies: [], podcasts: [], music: [] };
-  }
+export type ForYouFeed = {
+  movies: DiscoveryMedia[];
+  podcasts: DiscoveryMedia[];
+  music: DiscoveryMedia[];
+  topGenres: { id: number; name: string; count: number }[];
+  fallback: string | null;
+};
+
+export async function getTrendingFeed(): Promise<TrendingFeed> {
+  return request<TrendingFeed>('/api/discover/trending');
 }
 
 export async function getNewReleases(): Promise<NewReleases> {
-  try {
-    return await request<NewReleases>('/api/discover/new-releases');
-  } catch {
-    return { movies: [], podcasts: [] };
-  }
+  return request<NewReleases>('/api/discover/new-releases');
 }
 
-export async function getForYou(): Promise<TrendingFeed> {
-  try {
-    return await request<TrendingFeed>('/api/discover/for-you');
-  } catch {
-    return { movies: [], podcasts: [], music: [] };
-  }
+export async function getForYouFeed(): Promise<ForYouFeed> {
+  return request<ForYouFeed>('/api/discover/for-you');
 }
 
-export async function getPublicPlaylists(): Promise<PublicPlaylistCard[]> {
-  try {
-    const response = await fetch('/api/discover/public-playlists?limit=8', { credentials: 'same-origin' });
-    if (!response.ok) return [];
-    const data = await response.json().catch(() => ({}));
-    return data.playlists || data.items || [];
-  } catch {
-    return [];
-  }
+export async function getPublicPlaylists(): Promise<{ playlists: PublicPlaylistCard[] }> {
+  return request<{ playlists: PublicPlaylistCard[] }>('/api/discover/public-playlists');
 }
 
 export async function getCommunityPlaylists(): Promise<PublicPlaylistCard[]> {
-  return getPublicPlaylists();
+  const res = await request<{ playlists: PublicPlaylistCard[] }>('/api/discover/public-playlists');
+  return res.playlists || [];
 }
+
+export const getTrending = getTrendingFeed;
+export const getForYou = getForYouFeed;
