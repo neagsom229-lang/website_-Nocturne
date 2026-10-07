@@ -76,6 +76,7 @@ test('E2E media flows integration test', {
   await context.test('movie flow: search -> detail -> trailer URL', async () => {
     const searchRes = await fetch(`${baseUrl}/api/search/unified?q=inception&type=movie`);
     const data = await searchRes.json();
+    assert.equal(searchRes.status, 200, `search request failed: ${JSON.stringify(data)}`);
     assert.ok(Array.isArray(data.results) || data.degraded === true, 'search returns results array or degraded state');
     if (Array.isArray(data.results) && data.results.length > 0) {
       const movieId = data.results[0].id;
