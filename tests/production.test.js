@@ -187,7 +187,7 @@ test('production server serves the app and isolates authenticated feature data',
   }
   assert.equal((await fetch(`${baseUrl}/api/music/mixes`)).status, 401, 'feature APIs require a session');
 
-  const firstRegistration = await call('/api/auth/register', {
+  const firstRegistration = await call('/api/auth/signup', {
     ...jsonRequest('POST', { displayName: 'June', email: firstEmail, password }),
   });
   assert.equal(firstRegistration.response.status, 201);
@@ -202,14 +202,14 @@ test('production server serves the app and isolates authenticated feature data',
   assert.match(passwordHash, /^\$2[aby]\$/, 'password is stored as a bcrypt hash');
 
   assert.equal(
-    (await call('/api/auth/register', {
+    (await call('/api/auth/signup', {
       ...jsonRequest('POST', { displayName: 'June again', email: firstEmail.toUpperCase(), password }),
     })).response.status,
     409,
     'registration rejects a case-insensitive duplicate email',
   );
 
-  const login = await call('/api/auth/login', {
+  const login = await call('/api/auth/signin', {
     ...jsonRequest('POST', { email: firstEmail.toUpperCase(), password }),
   });
   assert.equal(login.response.status, 200);
@@ -286,7 +286,7 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal((await call('/api/journal/stats', { cookie: secondCookie })).body.entries, 1);
   assert.equal((await call('/api/dating/profiles', { cookie: secondCookie })).body.profiles.length, 4);
 
-  const secondRegistration = await call('/api/auth/register', {
+  const secondRegistration = await call('/api/auth/signup', {
     ...jsonRequest('POST', { displayName: 'Noor', email: secondEmail, password }),
   });
   assert.equal(secondRegistration.response.status, 201);
