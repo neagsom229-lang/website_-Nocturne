@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS search_cache (
   PRIMARY KEY (query, type, sort)
 );
 
+CREATE TABLE IF NOT EXISTS search_events (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  query TEXT NOT NULL,
+  type TEXT NOT NULL,
+  result_count INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS search_events_created_at_idx ON search_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS search_events_query_idx ON search_events(query);
+
 CREATE TABLE IF NOT EXISTS random_music_cache (
   genre TEXT PRIMARY KEY,
   track_json TEXT NOT NULL,

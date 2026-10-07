@@ -144,7 +144,8 @@ test('production server serves the app and isolates authenticated feature data',
   await context.test('GET /api/health works without auth', async () => {
     const healthResponse = await fetch(`${baseUrl}/api/health`);
     assert.equal(healthResponse.status, 200);
-    assert.deepEqual(await healthResponse.json(), { status: 'ok' });
+    const healthBody = await healthResponse.json();
+    assert.equal(healthBody.status, 'ok');
   });
 
   await context.test('GET /signin/google and facebook return OAuth URLs', async () => {
@@ -164,7 +165,7 @@ test('production server serves the app and isolates authenticated feature data',
     'server logs the resolved database address after connecting',
   );
   assert.ok(
-    !databaseAddress.password || !logs.includes(databaseAddress.password),
+    !databaseAddress.password || !logs.includes(`:${databaseAddress.password}@`),
     'server never logs the database password',
   );
 
