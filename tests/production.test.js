@@ -101,15 +101,18 @@ test('production server serves the app and isolates authenticated feature data',
   });
 
   async function waitForServer() {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
       if (server.exitCode !== null) throw new Error(`Production server exited early:\n${logs}`);
       try {
         const response = await fetch(`${baseUrl}/api/health`);
-        if (response.ok) return;
+        if (response.ok) {
+          const body = await response.json();
+          if (body.db === 'connected') return;
+        }
       } catch {}
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`Production server did not become ready:\n${logs}`);
+    throw new Error(`Production server did not become ready or database did not connect:\n${logs}`);
   }
 
   async function call(path, options = {}) {
