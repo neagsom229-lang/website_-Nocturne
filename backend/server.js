@@ -1027,6 +1027,7 @@ server.on('listening', async () => {
     console.info('[db] Database initialized successfully and ready for traffic.');
   } catch (err) {
     console.error('[db] Failed to initialize database:', err.message);
+    process.exit(1);
   }
 });
 

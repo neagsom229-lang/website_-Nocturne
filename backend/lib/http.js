@@ -28,9 +28,6 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
     attempt += 1;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    if (typeof timeoutId.unref === 'function') {
-      timeoutId.unref();
-    }
 
     try {
       const response = await fetchImpl(url, {
@@ -65,8 +62,7 @@ export async function fetchWithResilience(url, options = {}, providerName = 'def
         const backoff = Math.pow(2, attempt) * 100 + Math.random() * 50;
         logger.debug(`[http] Retry attempt ${attempt} for ${providerName} after error: ${err.message}`, { providerName, attempt });
         await new Promise((r) => {
-          const t = setTimeout(r, backoff);
-          if (typeof t.unref === 'function') t.unref();
+          setTimeout(r, backoff);
         });
         continue;
       }

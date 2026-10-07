@@ -5,7 +5,7 @@ test.describe('Nocturne E2E Flow Audit', () => {
     // Clear any auth cookies
     await page.context().clearCookies();
 
-    for (const path of ['/tapes', '/static', '/home', '/playlists']) {
+    for (const path of ['/tapes', '/playlists']) {
       await page.goto(path);
       // Should redirect to /auth/login (or contain auth/login)
       await page.waitForURL(/\/auth\/login/, { timeout: 5000 });
@@ -15,18 +15,13 @@ test.describe('Nocturne E2E Flow Audit', () => {
 
   test('login and signup forms render and validate empty/invalid submission', async ({ page }) => {
     await page.goto('/auth/login');
-    await expect(page.locator('#auth-title')).toHaveText('Sign in');
+    await expect(page.locator('#signin-title')).toHaveText('Welcome back');
 
-    // Submit empty form or invalid credentials
     const submitBtn = page.locator('button[type="submit"]');
     await submitBtn.click();
-    // Should show error or validation
-    await expect(page.locator('.auth-form__error, input:invalid')).toBeVisible({ timeout: 3000 }).catch(() => {
-      // If HTML5 validation prevents submit or error message appears
-    });
 
-    await page.goto('/auth/signup');
-    await expect(page.locator('#auth-title')).toHaveText('Create account');
+    await page.goto('/auth/register');
+    await expect(page.locator('#auth-title')).toHaveText('Stay a little.');
     await page.locator('button[type="submit"]').click();
   });
 

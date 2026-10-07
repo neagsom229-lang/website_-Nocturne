@@ -51,9 +51,10 @@ test('/api/health endpoint returns 200 OK', async (context) => {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  context.after(() => {
+  context.after(async () => {
     if (server.exitCode === null) {
       server.kill();
+      await new Promise((resolve) => server.once('exit', resolve));
     }
   });
 

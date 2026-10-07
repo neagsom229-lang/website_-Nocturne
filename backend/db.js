@@ -277,8 +277,8 @@ const seed = async () => db.transaction(async (tx) => {
 
 export async function initializeDatabase() {
   const startTime = Date.now();
-  let attempts = 5;
-  let delay = 1000;
+  let attempts = process.env.NODE_ENV === 'test' ? 2 : 5;
+  let delay = process.env.NODE_ENV === 'test' ? 100 : 1000;
   let connected = false;
   let lastError;
 
