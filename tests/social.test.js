@@ -278,21 +278,20 @@ test('following feed query excludes the signed-in user activity', async () => {
     assert.equal(response.response.status, 200);
     assert.match(database.lastFeedSql, /activity\."userid" <> \$1/);
   });
+});
 
-  test('following feed excludes soft-deleted users’ activity', async () => {
-    await withSocialServer(async ({ call, database }) => {
-      const result = await call('/api/feed/following', { user: 'listener' });
-      assert.deepEqual(result.body.activities, []);
-      assert.match(database.lastFeedSql, /u\.deleted_at is null/);
-    });
+test('following feed excludes soft-deleted users’ activity', async () => {
+  await withSocialServer(async ({ call, database }) => {
+    const result = await call('/api/feed/following', { user: 'listener' });
+    assert.deepEqual(result.body.activities, []);
+    assert.match(database.lastFeedSql, /u\.deleted_at is null/);
   });
+});
 
-  test('public playlist discovery excludes soft-deleted playlist owners', async () => {
-    await withSocialServer(async ({ call, database }) => {
-      const result = await call('/api/discover/public-playlists');
-      assert.deepEqual(result.body.playlists, [{ id: 1, name: 'Still Here' }]);
-      assert.match(database.lastPlaylistSql, /u\.deleted_at is null/);
-    });
+test('public playlist discovery excludes soft-deleted playlist owners', async () => {
+  await withSocialServer(async ({ call, database }) => {
+    const result = await call('/api/discover/public-playlists');
+    assert.deepEqual(result.body.playlists, [{ id: 1, name: 'Still Here' }]);
+    assert.match(database.lastPlaylistSql, /u\.deleted_at is null/);
   });
-
 });
