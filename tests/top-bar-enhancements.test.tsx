@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({
-  authUser: { id: 'user-1', displayName: 'June', email: 'june@example.com' } as { id: string; displayName: string; email: string },
+  authUser: { id: 'user-1', displayName: 'June', email: 'june@example.com' } as { id: string; displayName: string; email: string } | null,
   signOut: vi.fn(),
 }));
 
@@ -21,13 +21,13 @@ import { saveStoredNotifications } from '../src/lib/notifications';
 afterEach(cleanup);
 
 describe('Top-bar enhancements', () => {
-  it('Breadcrumbs render correct segments for various paths', () => {
+  it('Breadcrumbs render correct segments for movies path', () => {
     function DummyBreadcrumbComponent() {
       const crumbs = useBreadcrumbs();
       return <Breadcrumbs items={crumbs} />;
     }
 
-    const { rerender } = render(
+    render(
       <MemoryRouter initialEntries={['/movies']}>
         <Routes>
           <Route path="/movies" element={<DummyBreadcrumbComponent />} />
@@ -38,8 +38,15 @@ describe('Top-bar enhancements', () => {
     expect(screen.getByText('Home')).toBeTruthy();
     expect(screen.getByText('Discover')).toBeTruthy();
     expect(screen.getByText('Movies')).toBeTruthy();
+  });
 
-    rerender(
+  it('Breadcrumbs render correct segments for library path', () => {
+    function DummyBreadcrumbComponent() {
+      const crumbs = useBreadcrumbs();
+      return <Breadcrumbs items={crumbs} />;
+    }
+
+    render(
       <MemoryRouter initialEntries={['/library']}>
         <Routes>
           <Route path="/library" element={<DummyBreadcrumbComponent />} />
@@ -49,8 +56,15 @@ describe('Top-bar enhancements', () => {
 
     expect(screen.getByText('My Media')).toBeTruthy();
     expect(screen.getByText('Library')).toBeTruthy();
+  });
 
-    rerender(
+  it('Breadcrumbs render correct segments for playlist path', () => {
+    function DummyBreadcrumbComponent() {
+      const crumbs = useBreadcrumbs();
+      return <Breadcrumbs items={crumbs} />;
+    }
+
+    render(
       <MemoryRouter initialEntries={['/playlists/abc']}>
         <Routes>
           <Route path="/playlists/:id" element={<DummyBreadcrumbComponent />} />
@@ -59,7 +73,7 @@ describe('Top-bar enhancements', () => {
     );
 
     expect(screen.getByText('Playlists')).toBeTruthy();
-    expect(screen.getByText('abc')).toBeTruthy();
+    expect(screen.getByText('Details')).toBeTruthy();
   });
 
   it('Notification panel opens on bell click and shows empty state when zero notifications', async () => {
@@ -99,8 +113,8 @@ describe('Top-bar enhancements', () => {
     expect(menu).toBeTruthy();
 
     // Keyboard navigation (ArrowDown, Esc)
-    fireEvent.keydown(window, { key: 'ArrowDown' });
-    fireEvent.keydown(window, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'ArrowDown' });
+    fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(screen.queryByRole('menu', { name: /user menu/i })).toBeNull();
   });

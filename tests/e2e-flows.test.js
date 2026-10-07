@@ -40,6 +40,9 @@ test('E2E media flows integration test', {
       DATABASE_URL: databaseUrl,
       JWT_SECRET: 'e2e-integration-test-secret-long-enough-for-jwt',
       CORS_ORIGIN: baseUrl,
+      SUPABASE_URL: 'https://placeholder.supabase.co',
+      SUPABASE_ANON_KEY: 'placeholder-anon-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'placeholder-service-role-key',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

@@ -9,8 +9,18 @@ test('Supabase pooler URLs disable certificate verification', () => {
   );
 });
 
-test('non-pooler URLs use default SSL behavior', () => {
-  for (const hostname of ['localhost', 'db.project.supabase.co', 'db.example.com']) {
+test('localhost and sslmode=disable return false SSL configuration', () => {
+  for (const urlStr of [
+    'postgresql://user:pass@localhost:5432/db',
+    'postgresql://user:pass@127.0.0.1:5432/db',
+    'postgresql://user:pass@remotehost:5432/db?sslmode=disable',
+  ]) {
+    assert.equal(getSslConfig(new URL(urlStr)), false, `${urlStr} should return false SSL config`);
+  }
+});
+
+test('non-pooler remote URLs use default SSL behavior', () => {
+  for (const hostname of ['db.project.supabase.co', 'db.example.com']) {
     const databaseUrl = new URL(`postgresql://user:password@${hostname}:5432/database`);
     assert.equal(getSslConfig(databaseUrl), undefined, `${hostname} should use default SSL behavior`);
   }

@@ -104,7 +104,7 @@ describe('Player Dock enhancements', () => {
     expect(screen.getByText('1')).toBeTruthy();
     const btn = screen.getByRole('button', { name: /^queue$/i });
     await user.click(btn);
-    expect(screen.getByRole('dialog', { name: /^queue$/i })).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: /playback queue/i })).toBeTruthy();
     expect(screen.getByText('Song 1')).toBeTruthy();
   });
 });

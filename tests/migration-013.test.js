@@ -27,8 +27,9 @@ test('migration 013 correctly alters search_cache primary key to (query, type, s
     schemaCreated = true;
     await client.query(`SET search_path TO ${quotedSchema}`);
 
-    // Create base table with original search_cache primary key (query, type)
+    // Create base table with original search_cache primary key (query, type) and users table for search_events foreign key
     await client.query(`
+      CREATE TABLE users (id TEXT PRIMARY KEY);
       CREATE TABLE search_cache (
         query TEXT NOT NULL,
         type TEXT NOT NULL,
