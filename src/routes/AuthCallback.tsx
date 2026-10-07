@@ -14,7 +14,6 @@ export function AuthCallback() {
     guard.current = true;
 
     async function handleCallback() {
-      console.info('[callback] URL:', window.location.href);
       try {
         const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const accessToken = hash.get('access_token');
@@ -24,7 +23,7 @@ export function AuthCallback() {
           throw new Error('No session in URL — the link may have expired.');
         }
 
-        console.info('[callback] got tokens, posting to backend');
+        // Post tokens to backend
 
         const res = await fetch('/api/auth/callback', {
           method: 'POST',

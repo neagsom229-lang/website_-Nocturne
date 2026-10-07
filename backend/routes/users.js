@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { sendAccountDeletedEmail } from '../lib/emailService.js';
+import { csrfProtection } from '../lib/origins.js';
 
 async function findProfile(database, userId, viewerId) {
   return database.prepare(`
@@ -27,24 +28,6 @@ function canViewProfile(profile, viewerId) {
 
 export function createUsersRouter({ database, authenticate }) {
   const router = Router();
-
-  function csrfProtection(request, response, next) {
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
-      const origin = request.get('origin');
-      const host = request.get('host');
-      if (origin && host) {
-        try {
-          const originHost = new URL(origin).host;
-          if (originHost !== host) {
-            return response.status(403).json({ error: 'CSRF validation failed: Origin mismatch' });
-          }
-        } catch {
-          return response.status(403).json({ error: 'CSRF validation failed: Invalid origin' });
-        }
-      }
-    }
-    return next();
-  }
 
   router.use(csrfProtection);
 

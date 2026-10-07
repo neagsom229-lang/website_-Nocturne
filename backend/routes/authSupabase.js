@@ -3,6 +3,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { supabaseAdmin, supabaseClient } from '../lib/supabaseAdmin.js';
+import { csrfProtection } from '../lib/origins.js';
 
 
 
@@ -93,24 +94,6 @@ export function createAuthRouter({ database, cookieOptions, sessionCookie, initi
     legacyHeaders: false,
     message: { error: 'Too many verification emails requested. Please try again later.' },
   });
-
-  function csrfProtection(request, response, next) {
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
-      const origin = request.get('origin');
-      const host = request.get('host');
-      if (origin && host) {
-        try {
-          const originHost = new URL(origin).host;
-          if (originHost !== host) {
-            return response.status(403).json({ error: 'CSRF validation failed: Origin mismatch' });
-          }
-        } catch {
-          return response.status(403).json({ error: 'CSRF validation failed: Invalid origin' });
-        }
-      }
-    }
-    return next();
-  }
 
   router.use(csrfProtection);
 

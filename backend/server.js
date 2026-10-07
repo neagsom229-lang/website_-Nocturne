@@ -22,6 +22,7 @@ import { supabaseClient } from './lib/supabaseAdmin.js';
 
 import { createAuthRouter } from './routes/authSupabase.js';
 import { validateAndLoadConfig } from './config.js';
+import { isOriginAllowed } from './lib/origins.js';
 
 const config = validateAndLoadConfig();
 
@@ -38,10 +39,6 @@ const unifiedSearchLimiter = rateLimit({
   message: { error: 'Too many searches. Please slow down a little.' },
 });
 
-const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:4173')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
 app.disable('x-powered-by');
 
 if (process.env.NODE_ENV === 'production') {
@@ -87,8 +84,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 app.use(cors((request, callback) => {
   const origin = request.get('origin');
-  const requestOrigin = `${request.protocol}://${request.get('host')}`;
-  if (!origin || origin === requestOrigin || allowedOrigins.includes(origin)) {
+  const referer = request.get('referer');
+  const check = isOriginAllowed(origin, referer);
+  if (!origin || check.allowed) {
     return callback(null, { origin: true, credentials: true });
   }
   return callback(new Error('Origin is not allowed by CORS'));
