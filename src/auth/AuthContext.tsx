@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
 
 export type AuthUser = {
   id: string;
@@ -67,34 +67,61 @@ const ALLOWED_OAUTH_PREFIXES = ['https://', 'http://localhost'];
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | undefined | null>(undefined);
   const [loading, setLoading] = useState(true);
-  const checkedRef = useRef(false);
 
   useEffect(() => {
-    if (checkedRef.current) return;
-    checkedRef.current = true;
-
     let active = true;
+    const controller = new AbortController();
+
+    const safetyTimeout = setTimeout(() => {
+      if (active) {
+        controller.abort();
+        setUser(null);
+        setLoading(false);
+      }
+    }, 8000);
+
     async function checkAuth(retries = 2, delayMs = 500) {
       for (let attempt = 0; attempt <= retries; attempt++) {
         if (!active) return;
         try {
-          const { user: currentUser } = await authRequest<{ user: AuthUser }>('/api/auth/me');
-          if (active) {
-            setUser(currentUser);
-            setLoading(false);
-          }
-          return;
-        } catch (error: unknown) {
-          const status = (error as AuthError)?.status;
-          if (status === 401 || status === 403) {
+          const response = await fetch('/api/auth/me', {
+            signal: controller.signal,
+            credentials: 'same-origin',
+          });
+          if (response.status === 204 || response.status === 401 || response.status === 403) {
             if (active) {
               setUser(null);
               setLoading(false);
             }
             return;
           }
+          let payload: { user?: AuthUser } = {};
+          try {
+            payload = await response.json();
+          } catch {
+            // ignore JSON parse error on non-ok responses
+          }
+          if (response.ok && payload.user) {
+            if (active) {
+              setUser(payload.user);
+              setLoading(false);
+            }
+            return;
+          } else {
+            if (active && attempt === retries) {
+              setUser(null);
+              setLoading(false);
+            }
+          }
+        } catch (error: unknown) {
+          if (!active || (error instanceof Error && error.name === 'AbortError')) {
+            return;
+          }
           if (attempt < retries) {
             await new Promise((resolve) => setTimeout(resolve, delayMs));
+          } else if (active) {
+            setUser(null);
+            setLoading(false);
           }
         }
       }
@@ -104,7 +131,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     void checkAuth();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      clearTimeout(safetyTimeout);
+      controller.abort();
+    };
   }, []);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {

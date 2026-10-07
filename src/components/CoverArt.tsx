@@ -49,9 +49,9 @@ export function CoverArt({
   className?: string;
 }) {
   const [photoFailed, setPhotoFailed] = useState(false);
-  const photo = COVER_PHOTOS[seed];
+  const photo = COVER_PHOTOS[seed] ?? (seed && (seed.startsWith('http://') || seed.startsWith('https://') || seed.startsWith('/')) ? seed : undefined);
   const usesPhoto = Boolean(photo) && !photoFailed;
-  const plate = PLATES[hashSeed(seed) % VARIANTS];
+  const plate = PLATES[hashSeed(seed || 'default') % VARIANTS];
 
   const modifier = ratio === 'portrait' ? '' : ` cover--${ratio}`;
   const style: CSSProperties | undefined = usesPhoto ? undefined : { backgroundImage: plate };

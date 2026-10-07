@@ -6,7 +6,15 @@ import { validateAndLoadConfig } from '../backend/config.js';
 test('fetchWithResilience throws timeout error when fetchImpl aborts', async () => {
   const mockFetch = async (_url, options) => {
     return new Promise((_resolve, reject) => {
+      const timer = setTimeout(() => {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        reject(err);
+      }, 30);
+      if (typeof timer.unref === 'function') timer.unref();
+
       options.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
         const err = new Error('The operation was aborted');
         err.name = 'AbortError';
         reject(err);
@@ -15,7 +23,7 @@ test('fetchWithResilience throws timeout error when fetchImpl aborts', async () 
   };
 
   const oldEnv = process.env.HTTP_TIMEOUT_MS;
-  process.env.HTTP_TIMEOUT_MS = '20';
+  process.env.HTTP_TIMEOUT_MS = '10';
   try {
     await assert.rejects(
       async () => fetchWithResilience('http://localhost/test', {}, 'test-provider', mockFetch),

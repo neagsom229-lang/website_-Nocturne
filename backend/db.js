@@ -5,7 +5,7 @@ import { getSslConfig } from './dbConfig.js';
 const { Pool, types } = pg;
 types.setTypeParser(20, Number);
 types.setTypeParser(1700, Number);
-const rawDatabaseUrl = process.env.DATABASE_URL;
+const rawDatabaseUrl = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL;
 if (!rawDatabaseUrl) {
   throw new Error(
     'DATABASE_URL is not set. On Render, add it under Environment → Add Environment Variable using your Supabase Shared Pooler connection string (host *.pooler.supabase.com, port 6543, ?pgbouncer=true).',
@@ -13,14 +13,21 @@ if (!rawDatabaseUrl) {
 }
 
 const databaseUrl = new URL(rawDatabaseUrl);
+const dbHost = databaseUrl.hostname;
+const dbPort = databaseUrl.port || '5432';
 databaseUrl.searchParams.set('pgbouncer', 'true');
 const ssl = getSslConfig(databaseUrl);
 const pool = new Pool({
   connectionString: databaseUrl.toString(),
   ssl,
 });
+process.on('exit', () => {
+  try {
+    pool.end();
+  } catch {}
+});
 console.info(
-  `Connecting to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'} `
+  `Connecting to PostgreSQL at ${dbHost}:${dbPort} `
   + `as ${databaseUrl.username} `
   + `(ssl.rejectUnauthorized=${ssl?.rejectUnauthorized ?? 'default'})`,
 );
@@ -279,11 +286,11 @@ export async function initializeDatabase() {
     try {
       await pool.query('SELECT 1');
       connected = true;
-      console.info(`Connected to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'}`);
+      console.info(`Connected to PostgreSQL at ${dbHost}:${dbPort}`);
       break;
     } catch (error) {
       lastError = error;
-      console.warn(`[db] Connection attempt ${i}/${attempts} failed (host: ${databaseUrl.hostname}, port: ${databaseUrl.port || '5432'}). Error: ${error.message}`);
+      console.warn(`[db] Connection attempt ${i}/${attempts} failed (host: ${dbHost}, port: ${dbPort}). Error: ${error.message}`);
       if (i < attempts) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2;
@@ -292,7 +299,7 @@ export async function initializeDatabase() {
   }
 
   if (!connected) {
-    console.error(`[db] FATAL: Failed to connect to PostgreSQL at ${databaseUrl.hostname}:${databaseUrl.port || '5432'} after ${attempts} attempts.`);
+    console.error(`[db] FATAL: Failed to connect to PostgreSQL at ${dbHost}:${dbPort} after ${attempts} attempts.`);
     console.error(`[db] Please check your DATABASE_URL environment variable and ensure PostgreSQL is running.`);
     throw new Error(`Database connection failed: ${lastError?.message || 'ECONNREFUSED'}`);
   }
