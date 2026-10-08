@@ -18,6 +18,7 @@ import { createDiscoverRouter } from './routes/discover.js';
 import { createUsersRouter } from './routes/users.js';
 import { createSocialRouter } from './routes/social.js';
 import { createSearchUnifiedRouter } from './routes/searchUnified.js';
+import { searchExternalMedia, MediaSearchError } from './mediaSearch.js';
 import { supabaseClient } from './lib/supabaseAdmin.js';
 
 import { createAuthRouter } from './routes/authSupabase.js';
@@ -37,6 +38,14 @@ const unifiedSearchLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Too many searches. Please slow down a little.' },
+});
+
+const searchLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many searches. Please try again in a little while.' },
 });
 
 app.disable('x-powered-by');
@@ -395,6 +404,62 @@ app.all('/api/auth/login', (req, res) => res.status(410).json({ error: 'Endpoint
 app.all('/api/auth/logout', (req, res) => res.status(410).json({ error: 'Endpoint deprecated. Please use /api/auth/signout' }));
 
 app.use('/api/discover', createDiscoverRouter({ database: db, authenticate }));
+
+app.get('/api/search', searchLimiter, authenticate, async (request, response, next) => {
+  const query = typeof request.query.q === 'string' ? request.query.q.trim() : '';
+  const type = request.query.type;
+  if (!query || query.length > 200) {
+    return response.status(400).json({ error: 'A search query of 1 to 200 characters is required' });
+  }
+  if (!['video', 'podcast', 'audio', 'video_podcast'].includes(type)) {
+    return response.status(400).json({ error: 'type must be "video", "podcast", "audio", or "video_podcast"' });
+  }
+
+  const cacheQuery = query.toLowerCase();
+  const cached = await db.prepare(`
+    SELECT response_json AS "responseJson" FROM search_cache
+    WHERE query = $1 AND type = $2 AND expires_at > NOW()
+  `).get(cacheQuery, type);
+  if (cached) {
+    try {
+      return response.json({ query, type, results: JSON.parse(cached.responseJson), cached: true });
+    } catch (error) {
+      console.error('Invalid media search cache entry:', error);
+      await db.prepare('DELETE FROM search_cache WHERE query = $1 AND type = $2').run(cacheQuery, type);
+    }
+  }
+
+  try {
+    const results = await searchExternalMedia(query, type);
+    await db.prepare(`
+      INSERT INTO search_cache (query, type, sort, response_json, expires_at)
+      VALUES ($1, $2, 'relevance', $3, (NOW() + INTERVAL '15 minutes'))
+      ON CONFLICT(query, type, sort) DO UPDATE SET
+        response_json = excluded.response_json,
+        expires_at = excluded.expires_at
+    `).run(cacheQuery, type, JSON.stringify(results));
+    await db.prepare("DELETE FROM search_cache WHERE expires_at <= NOW()").run();
+    await db.prepare(`
+      DELETE FROM search_cache
+      WHERE (query, type) IN (
+        SELECT query, type FROM search_cache
+        ORDER BY expires_at DESC
+        OFFSET 1000
+      )
+    `).run();
+    return response.json({ query, type, results, cached: false });
+  } catch (error) {
+    if (error instanceof MediaSearchError) {
+      if (error.status >= 500) console.error(`Media search provider error: ${error.code}`);
+      const message = error.code === 'youtube_not_configured'
+        ? 'YouTube search is not ready yet. Try podcasts or audio while we finish setting up video search.'
+        : 'The media search provider could not complete the request.';
+      return response.status(error.status).json({ error: message });
+    }
+    return next(error);
+  }
+});
+
 app.use('/api/search', unifiedSearchLimiter, createSearchUnifiedRouter({ database: db }));
 app.use('/api', authenticate);
 app.use('/api/users', createUsersRouter({ database: db, authenticate }));
