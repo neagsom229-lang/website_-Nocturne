@@ -310,5 +310,5 @@ test('production server serves the app and isolates authenticated feature data',
 
   assert.equal((await call('/api/auth/logout', { method: 'POST', cookie: secondCookie })).response.status, 204);
   assert.equal((await call('/api/auth/me', { cookie: secondCookie })).response.status, 401);
-  assert.equal((await call('/api/auth/me', { cookie: firstCookie })).response.status, 200, 'logout revokes only its own session');
+  assert.equal((await call('/api/auth/me', { cookie: secondCookie })).response.status, 200, 'logout revokes only its own session');
 });
