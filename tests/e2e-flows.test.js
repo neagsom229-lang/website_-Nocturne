@@ -60,15 +60,18 @@ test('E2E media flows integration test', {
   });
 
   async function waitForServer() {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
       if (server.exitCode !== null) throw new Error(`Server exited early:\n${logs}`);
       try {
         const response = await fetch(`${baseUrl}/api/health`);
-        if (response.ok) return;
+        if (response.ok) {
+          const body = await response.json();
+          if (body.db === 'connected') return;
+        }
       } catch {}
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`Server did not become ready:\n${logs}`);
+    throw new Error(`Server did not become ready or database did not connect:\n${logs}`);
   }
 
   await waitForServer();

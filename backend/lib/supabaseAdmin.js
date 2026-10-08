@@ -51,6 +51,7 @@ function createUnconfiguredClient(_name) {
 }
 
 function createMockClient() {
+  const registeredEmails = new Set();
   return {
     auth: {
       async signInWithPassword({ email }) {
@@ -92,6 +93,16 @@ function createMockClient() {
       },
       admin: {
         async createUser({ email, user_metadata }) {
+          const normalized = typeof email === 'string' ? email.toLowerCase() : '';
+          if (normalized && registeredEmails.has(normalized)) {
+            return {
+              data: { user: null },
+              error: { message: 'User already registered', status: 422 }
+            };
+          }
+          if (normalized) {
+            registeredEmails.add(normalized);
+          }
           return {
             data: { user: { id: 'mock-admin-user-id-' + email, email, user_metadata, email_confirmed_at: new Date() } },
             error: null
