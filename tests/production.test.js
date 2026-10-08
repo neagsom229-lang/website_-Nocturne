@@ -291,8 +291,18 @@ test('production server serves the app and isolates authenticated feature data',
     ...jsonRequest('POST', { displayName: 'Noor', email: secondEmail, password }),
   });
   assert.equal(secondRegistration.response.status, 201);
-  const otherCookie = cookieFrom(secondRegistration.response);
-  assert.notEqual(secondRegistration.body.user.id, firstUserId);
+  const { rows: [{ id: secondUserId }] } = await database.query(
+    'SELECT id FROM users WHERE email = $1',
+    [secondEmail],
+  );
+  assert.ok(secondUserId);
+  const secondLogin = await call('/api/auth/signin', {
+    ...jsonRequest('POST', { email: secondEmail, password }),
+  });
+  assert.equal(secondLogin.response.status, 200);
+  const otherCookie = cookieFrom(secondLogin.response);
+  assert.equal(secondLogin.body.user.id, secondUserId);
+  assert.notEqual(secondUserId, firstUserId);
   assert.equal((await call('/api/library', { cookie: otherCookie })).body.items.length, 0);
   assert.equal((await call(`/api/library/${libraryItemId}`, {
     method: 'DELETE',
@@ -308,7 +318,14 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal((await call('/api/journal/entries', { cookie: otherCookie })).body.entries.length, 0);
   assert.equal((await call('/api/dating/profiles', { cookie: otherCookie })).body.profiles.length, 4);
 
-  assert.equal((await call('/api/auth/logout', { method: 'POST', cookie: secondCookie })).response.status, 204);
+  const otherDeviceLogin = await call('/api/auth/signin', {
+    ...jsonRequest('POST', { email: firstEmail, password }),
+  });
+  assert.equal(otherDeviceLogin.response.status, 200);
+  const otherDeviceCookie = cookieFrom(otherDeviceLogin.response);
+  assert.notEqual(otherDeviceCookie, secondCookie);
+
+  assert.equal((await call('/api/auth/signout', { method: 'POST', cookie: secondCookie })).response.status, 204);
   assert.equal((await call('/api/auth/me', { cookie: secondCookie })).response.status, 401);
-  assert.equal((await call('/api/auth/me', { cookie: secondCookie })).response.status, 200, 'logout revokes only its own session');
+  assert.equal((await call('/api/auth/me', { cookie: otherDeviceCookie })).response.status, 200, 'signout revokes only its own session');
 });
