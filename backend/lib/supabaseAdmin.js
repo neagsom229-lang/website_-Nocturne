@@ -52,12 +52,17 @@ function createUnconfiguredClient(_name) {
 
 function createMockClient() {
   const registeredEmails = new Set();
+  const mockUserId = (email) => 'mock-user-id-' + String(email || '').toLowerCase();
   return {
     auth: {
       async signInWithPassword({ email }) {
+        const normalized = typeof email === 'string' ? email.toLowerCase() : '';
+        if (normalized) {
+          registeredEmails.add(normalized);
+        }
         return {
           data: {
-            user: { id: 'mock-user-id-' + email, email, email_confirmed_at: new Date() },
+            user: { id: mockUserId(email), email, email_confirmed_at: new Date() },
             session: { access_token: 'mock-access-token', refresh_token: 'mock-refresh-token' }
           },
           error: null
@@ -77,7 +82,7 @@ function createMockClient() {
         return { data: { session: { access_token: 'mock-access-token' } }, error: null };
       },
       async verifyOtp({ token_hash }) {
-        return { data: { user: { id: 'mock-user-id-' + token_hash, email: 'otp@example.com', email_confirmed_at: new Date() } }, error: null };
+        return { data: { user: { id: 'mock-user-id-' + String(token_hash || '').toLowerCase(), email: 'otp@example.com', email_confirmed_at: new Date() } }, error: null };
       },
       async resend() {
         return { data: {}, error: null };
@@ -104,7 +109,7 @@ function createMockClient() {
             registeredEmails.add(normalized);
           }
           return {
-            data: { user: { id: 'mock-admin-user-id-' + email, email, user_metadata, email_confirmed_at: new Date() } },
+            data: { user: { id: mockUserId(email), email, user_metadata, email_confirmed_at: new Date() } },
             error: null
           };
         },
