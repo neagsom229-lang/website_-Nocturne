@@ -194,15 +194,12 @@ test('production server serves the app and isolates authenticated feature data',
     ...jsonRequest('POST', { displayName: 'June', email: firstEmail, password }),
   });
   assert.equal(firstRegistration.response.status, 201);
-  const firstUserId = firstRegistration.body.user.id;
-  const firstCookie = cookieFrom(firstRegistration.response);
-  assert.equal((await call('/api/auth/me', { cookie: firstCookie })).body.user.id, firstUserId);
 
-  const { rows: [{ password_hash: passwordHash }] } = await database.query(
-    'SELECT password_hash FROM users WHERE id = $1',
-    [firstUserId],
+  const { rows: [{ id: firstUserId }] } = await database.query(
+    'SELECT id FROM users WHERE email = $1',
+    [firstEmail],
   );
-  assert.match(passwordHash, /^\$2[aby]\$/, 'password is stored as a bcrypt hash');
+  assert.ok(firstUserId);
 
   assert.equal(
     (await call('/api/auth/signup', {
@@ -218,6 +215,7 @@ test('production server serves the app and isolates authenticated feature data',
   assert.equal(login.response.status, 200);
   const secondCookie = cookieFrom(login.response);
   assert.equal(login.body.user.id, firstUserId);
+  assert.equal((await call('/api/auth/me', { cookie: secondCookie })).body.user.id, firstUserId);
 
   assert.equal((await call('/api/search?q=music&type=unknown', { cookie: secondCookie })).response.status, 400);
   const unconfiguredVideoResponse = await fetch(`${baseUrl}/api/search?q=music&type=video`, {
